@@ -1,1 +1,0 @@
-const express=require('express');const app=express();app.get('/',(r,s)=>s.send('BreedingAI backend OK'));app.listen(8080);

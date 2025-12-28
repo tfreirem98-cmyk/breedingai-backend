@@ -7,12 +7,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================= HEALTH CHECK =================
 app.get("/", (req, res) => {
   res.send("BreedingAI backend running");
 });
 
-// ================= ANALYZE =================
 app.post("/api/analyze", async (req, res) => {
   try {
     const { animal, breed, origin, goal } = req.body;
@@ -22,47 +20,51 @@ app.post("/api/analyze", async (req, res) => {
     }
 
     const prompt = `
-Actúa como un ESPECIALISTA EN CRÍA ANIMAL PROFESIONAL.
+Actúa como un ASESOR PROFESIONAL EN CRÍA ANIMAL.
+No uses lenguaje ambiguo.
+No generalices.
+No suavices conclusiones.
 
-Tu tarea es asistir a un criador en la toma de decisiones.
-NO uses lenguaje genérico ni ambiguo.
-NO hagas promesas.
-SÉ claro, estructurado y responsable.
+DATOS DEL CRUCE
+Animal: ${animal}
+Raza: ${breed}
+Origen genético: ${origin || "No especificado"}
+Objetivo de cría: ${goal}
 
-DATOS DEL CRUCE:
-- Animal: ${animal}
-- Raza: ${breed}
-- Origen genético: ${origin || "No especificado"}
-- Objetivo de la cría: ${goal}
-
-GENERA UN INFORME CON ESTA ESTRUCTURA EXACTA:
+GENERA UN INFORME PROFESIONAL CON ESTE FORMATO EXACTO:
 
 TÍTULO DEL INFORME
 
-1. RESUMEN EJECUTIVO
-Indica claramente si el cruce es:
-- Recomendado
-- Recomendado con reservas
-- No recomendado
+CLASIFICACIÓN GENERAL
+Indica solo una:
+- APTO
+- APTO CON CONDICIONES
+- NO APTO
 
-2. OBJETIVO DE CRÍA ANALIZADO
-Explica brevemente si el cruce se alinea con el objetivo indicado.
+PUNTUACIONES (0 a 10)
+Compatibilidad genética:
+Riesgo hereditario estimado:
+Adecuación al objetivo de cría:
 
-3. RIESGOS DETECTADOS
-Enumera riesgos genéticos, de temperamento o de repetición.
-Si no hay riesgos claros, indícalo.
+ANÁLISIS TÉCNICO
+Explica brevemente el razonamiento técnico.
 
-4. RECOMENDACIÓN DEL SISTEMA
-Explica QUÉ HARÍAS y QUÉ EVITARÍAS como especialista.
+RIESGOS IDENTIFICADOS
+Enumera riesgos reales. Si no existen, indícalo claramente.
 
-5. ALTERNATIVA SUGERIDA (SI APLICA)
-Propón una alternativa solo si aporta valor real.
+CONDICIONES DE USO
+Indica qué está permitido y qué debe evitarse.
 
-6. NIVEL DE CONFIANZA
-Indica: Alta / Media / Baja
-y explica brevemente por qué.
+RECOMENDACIÓN PROFESIONAL
+Conclusión clara orientada a la decisión.
 
-Usa un tono profesional, claro y directo.
+NIVEL DE CONFIANZA DEL ANÁLISIS
+Alta / Media / Baja con explicación breve.
+
+NOTA TÉCNICA
+Aclara que el informe es una herramienta de apoyo a la decisión.
+
+Mantén un tono profesional, técnico y responsable.
 `;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -73,12 +75,12 @@ Usa un tono profesional, claro y directo.
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        temperature: 0.3,
+        temperature: 0.25,
         messages: [
           {
             role: "system",
             content:
-              "Eres un experto en genética y cría animal. Tu función es asistir en decisiones responsables.",
+              "Eres un especialista en genética y cría animal que asesora a profesionales.",
           },
           {
             role: "user",
@@ -94,9 +96,7 @@ Usa un tono profesional, claro y directo.
       return res.status(500).json({ error: "Error generando análisis" });
     }
 
-    const analysis = data.choices[0].message.content;
-
-    res.json({ analysis });
+    res.json({ analysis: data.choices[0].message.content });
 
   } catch (err) {
     console.error(err);
@@ -104,7 +104,6 @@ Usa un tono profesional, claro y directo.
   }
 });
 
-// ================= START =================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log("BreedingAI backend running on port " + PORT);

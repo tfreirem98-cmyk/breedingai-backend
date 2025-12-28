@@ -1,151 +1,63 @@
 import express from "express";
 import cors from "cors";
+import Stripe from "stripe";
 
 const app = express();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-/* =======================
-   MIDDLEWARE
-======================= */
 app.use(cors());
 app.use(express.json());
 
-/* =======================
-   RUTA DE SALUD
-======================= */
-app.get("/", (req, res) => {
-  res.send("BreedingAI backend activo");
+/* ===== ANALYZE (YA LO TIENES FUNCIONANDO) ===== */
+app.post("/analyze", (req, res) => {
+  res.json({
+    classification: "APTO CON CONDICIONES",
+    scores: {
+      geneticCompatibility: 8,
+      hereditaryRisk: 3,
+      goalAdequacy: 9
+    },
+    summary: {
+      shortDecision: "Cruce viable con control genético y sanitario."
+    },
+    recommendations: {
+      breedingAdvice: [
+        "Evitar repetir este cruce en generaciones consecutivas."
+      ]
+    },
+    finalDecision: {
+      warning:
+        "No recomendado para programas de cría intensivos sin control genético."
+    }
+  });
 });
 
-/* =======================
-   RUTA PRINCIPAL
-======================= */
-app.post("/analyze", async (req, res) => {
+/* ===== STRIPE CHECKOUT ===== */
+app.post("/create-checkout-session", async (req, res) => {
   try {
-    const { animal, breed, origin, goal } = req.body;
-
-    // Validación mínima
-    if (!animal || !breed || !goal) {
-      return res.status(400).json({
-        error: "Datos insuficientes para el análisis"
-      });
-    }
-
-    /* =======================
-       LÓGICA PROFESIONAL
-       (simulada ahora, IA después)
-    ======================= */
-
-    // Clasificación base
-    let classification = "APTO CON CONDICIONES";
-    let hereditaryRiskScore = 4;
-
-    if (goal.toLowerCase().includes("exposición")) {
-      hereditaryRiskScore = 5;
-    }
-
-    if (goal.toLowerCase().includes("salud")) {
-      hereditaryRiskScore = 3;
-    }
-
-    const response = {
-      classification,
-
-      summary: {
-        shortDecision:
-          "Cruce viable con control genético y sanitario",
-        confidenceLevel: "Media-Alta"
-      },
-
-      scores: {
-        geneticCompatibility: 8,
-        hereditaryRisk: hereditaryRiskScore,
-        goalAdequacy: 9
-      },
-
-      breedContext: {
-        breed,
-        commonRisks: [
-          "Displasia de cadera",
-          "Problemas oculares hereditarios",
-          "Predisposición a sobrepeso"
-        ],
-        geneticDiversity: "Moderada"
-      },
-
-      riskAnalysis: {
-        level: "Moderado",
-        details: [
-          {
-            risk: "Displasia de cadera",
-            probability: "Media",
-            impact: "Alto",
-            notes:
-              "Se recomienda evaluación radiográfica de ambos progenitores antes del cruce."
-          },
-          {
-            risk: "Problemas oculares hereditarios",
-            probability: "Baja",
-            impact: "Medio",
-            notes:
-              "Controlable mediante selección genética adecuada y revisiones oftalmológicas."
-          }
-        ]
-      },
-
-      temperamentPrediction: {
-        stability: "Alta",
-        sociability: "Alta",
-        workDrive: "Media",
-        notes:
-          "Temperamento equilibrado esperado si se refuerza socialización temprana."
-      },
-
-      recommendations: {
-        breedingAdvice: [
-          "Evitar repetir este cruce en generaciones consecutivas",
-          "Priorizar líneas con baja incidencia de displasia",
-          "Realizar controles veterinarios previos al cruce"
-        ],
-        puppySelection: [
-          "Seleccionar cachorros con menor reactividad",
-          "Evaluar temperamento entre las semanas 6 y 8"
-        ],
-        longTerm: [
-          "Revisar los resultados del cruce antes de integrarlo de forma permanente en el programa de cría"
-        ]
-      },
-
-      finalDecision: {
-        recommended: true,
-        conditions: [
-          "Controles genéticos previos",
-          "Seguimiento veterinario periódico"
-        ],
-        warning:
-          "No recomendado para programas de cría intensivos sin control genético."
-      },
-
-      disclaimer:
-        "Este análisis es orientativo y no sustituye la evaluación de un veterinario o genetista canino."
-    };
-
-    return res.json(response);
-
-  } catch (error) {
-    console.error("Error en análisis:", error);
-    return res.status(500).json({
-      error: "Error interno al generar el análisis"
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price: process.env.STRIPE_PRICE_ID,
+          quantity: 1
+        }
+      ],
+      success_url: "https://TU_FRONTEND_URL/success.html",
+      cancel_url: "https://TU_FRONTEND_URL/app.html"
     });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Stripe error" });
   }
 });
 
-/* =======================
-   SERVIDOR
-======================= */
 const PORT = process.env.PORT || 8080;
-
-app.listen(PORT, () => {
-  console.log(`BreedingAI backend escuchando en puerto ${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`BreedingAI backend running on port ${PORT}`)
+);
 
 

@@ -3,65 +3,147 @@ import cors from "cors";
 
 const app = express();
 
-// ===== MIDDLEWARE =====
+/* =======================
+   MIDDLEWARE
+======================= */
 app.use(cors());
 app.use(express.json());
 
-// ===== RUTA DE PRUEBA =====
+/* =======================
+   RUTA DE SALUD
+======================= */
 app.get("/", (req, res) => {
   res.send("BreedingAI backend activo");
 });
 
-// ===== RUTA PRINCIPAL =====
+/* =======================
+   RUTA PRINCIPAL
+======================= */
 app.post("/analyze", async (req, res) => {
   try {
     const { animal, breed, origin, goal } = req.body;
 
-    // Respuesta simulada profesional
+    // Validación mínima
+    if (!animal || !breed || !goal) {
+      return res.status(400).json({
+        error: "Datos insuficientes para el análisis"
+      });
+    }
+
+    /* =======================
+       LÓGICA PROFESIONAL
+       (simulada ahora, IA después)
+    ======================= */
+
+    // Clasificación base
+    let classification = "APTO CON CONDICIONES";
+    let hereditaryRiskScore = 4;
+
+    if (goal.toLowerCase().includes("exposición")) {
+      hereditaryRiskScore = 5;
+    }
+
+    if (goal.toLowerCase().includes("salud")) {
+      hereditaryRiskScore = 3;
+    }
+
     const response = {
-      classification: "APTO CON CONDICIONES",
-      scores: {
-        compatibility: 8,
-        risk: 4,
-        goal: 9
+      classification,
+
+      summary: {
+        shortDecision:
+          "Cruce viable con control genético y sanitario",
+        confidenceLevel: "Media-Alta"
       },
-      quickRecommendation:
-        "El cruce es viable con un seguimiento cuidadoso de riesgos hereditarios moderados.",
-      sections: [
-        {
-          title: "Evaluación genética",
-          content:
-            `La compatibilidad genética entre los ejemplares de ${breed} es alta, 
-            con antecedentes favorables en líneas conocidas.`
-        },
-        {
-          title: "Riesgos hereditarios",
-          content:
-            "Se detecta riesgo moderado de displasia y problemas oculares comunes en la raza."
-        },
-        {
-          title: "Temperamento y comportamiento",
-          content:
-            "Se espera un temperamento equilibrado y sociable si se maneja adecuadamente la socialización."
-        },
-        {
-          title: "Recomendaciones finales",
-          content:
-            "Se recomienda proceder con el cruce evitando repeticiones consecutivas y realizando controles veterinarios."
-        }
-      ]
+
+      scores: {
+        geneticCompatibility: 8,
+        hereditaryRisk: hereditaryRiskScore,
+        goalAdequacy: 9
+      },
+
+      breedContext: {
+        breed,
+        commonRisks: [
+          "Displasia de cadera",
+          "Problemas oculares hereditarios",
+          "Predisposición a sobrepeso"
+        ],
+        geneticDiversity: "Moderada"
+      },
+
+      riskAnalysis: {
+        level: "Moderado",
+        details: [
+          {
+            risk: "Displasia de cadera",
+            probability: "Media",
+            impact: "Alto",
+            notes:
+              "Se recomienda evaluación radiográfica de ambos progenitores antes del cruce."
+          },
+          {
+            risk: "Problemas oculares hereditarios",
+            probability: "Baja",
+            impact: "Medio",
+            notes:
+              "Controlable mediante selección genética adecuada y revisiones oftalmológicas."
+          }
+        ]
+      },
+
+      temperamentPrediction: {
+        stability: "Alta",
+        sociability: "Alta",
+        workDrive: "Media",
+        notes:
+          "Temperamento equilibrado esperado si se refuerza socialización temprana."
+      },
+
+      recommendations: {
+        breedingAdvice: [
+          "Evitar repetir este cruce en generaciones consecutivas",
+          "Priorizar líneas con baja incidencia de displasia",
+          "Realizar controles veterinarios previos al cruce"
+        ],
+        puppySelection: [
+          "Seleccionar cachorros con menor reactividad",
+          "Evaluar temperamento entre las semanas 6 y 8"
+        ],
+        longTerm: [
+          "Revisar los resultados del cruce antes de integrarlo de forma permanente en el programa de cría"
+        ]
+      },
+
+      finalDecision: {
+        recommended: true,
+        conditions: [
+          "Controles genéticos previos",
+          "Seguimiento veterinario periódico"
+        ],
+        warning:
+          "No recomendado para programas de cría intensivos sin control genético."
+      },
+
+      disclaimer:
+        "Este análisis es orientativo y no sustituye la evaluación de un veterinario o genetista canino."
     };
 
-    res.json(response);
+    return res.json(response);
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al generar el análisis" });
+    console.error("Error en análisis:", error);
+    return res.status(500).json({
+      error: "Error interno al generar el análisis"
+    });
   }
 });
 
-// ===== PUERTO =====
+/* =======================
+   SERVIDOR
+======================= */
 const PORT = process.env.PORT || 8080;
+
 app.listen(PORT, () => {
   console.log(`BreedingAI backend escuchando en puerto ${PORT}`);
 });

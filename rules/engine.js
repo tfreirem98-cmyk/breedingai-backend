@@ -1,56 +1,28 @@
-const breeds = require("./breeds");
+import breeds from "./breeds.js";
 
-module.exports = function analyze({ breed, goal, consanguinity, antecedentes }) {
-  const breedData = breeds[breed];
+export function analyzeCross(data) {
+  const breed = breeds[data.breed];
 
-  if (!breedData) {
-    return { error: "Raza no soportada" };
+  if (!breed) {
+    throw new Error("Unknown breed");
   }
 
-  let riesgo = breedData.risk;
-  let compatibilidad = 10 - riesgo;
-  let adecuacion = 7;
+  let genetic = 10 - data.consanguinity * 3;
+  let risk = breed.baseRisk + data.conditions.length * 2;
+  let goalScore = data.goal === "Salud" ? 8 : 6;
 
-  // Consanguinidad
-  if (consanguinity === "Media") riesgo += 2;
-  if (consanguinity === "Alta") riesgo += 4;
-
-  // Antecedentes
-  riesgo += antecedentes.length * 1.5;
-
-  // Objetivo de cría
-  if (goal === "Salud") {
-    adecuacion = 10 - riesgo;
-  } else if (goal === "Trabajo") {
-    adecuacion = breedData.group === "Pastor" || breedData.group === "Trabajo" ? 9 : 6;
-  } else if (goal === "Estética") {
-    adecuacion = 7;
-    riesgo += 1;
-  }
-
-  // Normalización
-  riesgo = Math.min(Math.max(riesgo, 0), 10);
-  compatibilidad = Math.min(Math.max(compatibilidad, 0), 10);
-  adecuacion = Math.min(Math.max(adecuacion, 0), 10);
-
-  let veredicto = "APTO";
-  let recomendacion = "Cruce viable bajo control estándar.";
-
-  if (riesgo >= 7) {
-    veredicto = "APTO CON CONDICIONES";
-    recomendacion = "Requiere pruebas genéticas y seguimiento veterinario.";
-  }
-
-  if (riesgo >= 9) {
-    veredicto = "NO RECOMENDADO";
-    recomendacion = "Alto riesgo hereditario. Cruce desaconsejado.";
-  }
+  genetic = Math.max(1, Math.min(10, genetic));
+  risk = Math.max(0, Math.min(10, risk));
 
   return {
-    veredicto,
-    riesgoHereditario: riesgo,
-    compatibilidadGenetica: compatibilidad,
-    adecuacionObjetivo: adecuacion,
-    recomendacion
+    status: risk <= 5 ? "APTO" : "APTO CON CONDICIONES",
+    genetic,
+    risk,
+    goalScore,
+    explanation: `
+Cruce evaluado para ${data.breed}.
+Nivel de riesgo ${risk}/10.
+Recomendado solo con control veterinario.
+    `
   };
-};
+}

@@ -2,138 +2,133 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
-const PORT = process.env.PORT || 10000;
 
-/* =======================
+/* ===============================
    MIDDLEWARE
-======================= */
+================================ */
 app.use(cors());
 app.use(express.json());
 
-/* =======================
-   BASE DE CONOCIMIENTO
-======================= */
+/* ===============================
+   UTILIDADES
+================================ */
+function normalizarTexto(valor) {
+  if (!valor) return "";
+  return valor.toString().trim().toLowerCase();
+}
 
-const BREED_PROFILES = {
-  "Golden Retriever": {
-    baseRisk: 4,
-    commonIssues: ["displasia", "oculares"],
-    temperament: "equilibrado",
-    suitableObjectives: ["salud", "familia"]
-  },
-  "Bulldog Francés": {
-    baseRisk: 7,
-    commonIssues: ["respiratorios", "neurologicos"],
-    temperament: "braquicefálico",
-    suitableObjectives: ["salud"]
-  },
-  "Border Collie": {
-    baseRisk: 5,
-    commonIssues: ["neurologicos", "oculares"],
-    temperament: "alta energía",
-    suitableObjectives: ["rendimiento", "trabajo"]
-  }
-};
+function asegurarArray(valor) {
+  if (!valor) return [];
+  if (Array.isArray(valor)) return valor;
+  return [valor];
+}
 
-const CONSANGUINITY_PENALTY = {
-  baja: 0,
-  media: 2,
-  alta: 4
-};
+/* ===============================
+   MOTOR DE REGLAS PROFESIONAL
+================================ */
+function evaluarCruce({ raza, objetivo, consanguinidad, antecedentes }) {
+  let compatibilidad = 7;
+  let riesgo = 5;
+  let adecuacion = 7;
 
-/* =======================
-   MOTOR DE ANÁLISIS
-======================= */
+  const razaNorm = normalizarTexto(raza);
+  const objetivoNorm = normalizarTexto(objetivo);
+  const consangNorm = normalizarTexto(consanguinidad);
+  const antecedentesArr = asegurarArray(antecedentes).map(normalizarTexto);
 
-function analyzeCross(data) {
-  const {
-    raza,
-    objetivo,
-    consanguinidad,
-    antecedentes = []
-  } = data;
-
-  if (!BREED_PROFILES[raza]) {
-    return {
-      error: "Raza no soportada por el sistema profesional."
-    };
+  /* --- AJUSTES POR RAZA --- */
+  if (razaNorm.includes("golden")) {
+    riesgo += antecedentesArr.includes("displasia") ? 2 : 0;
+    adecuacion += objetivoNorm === "salud" ? 1 : 0;
   }
 
-  const breed = BREED_PROFILES[raza];
+  if (razaNorm.includes("bulldog")) {
+    riesgo += antecedentesArr.includes("respiratorios") ? 3 : 1;
+    compatibilidad -= 1;
+  }
 
-  // Riesgo hereditario
-  let hereditaryRisk = breed.baseRisk;
-  antecedentes.forEach(a => {
-    if (breed.commonIssues.includes(a)) {
-      hereditaryRisk += 1.5;
-    } else {
-      hereditaryRisk += 0.5;
-    }
-  });
-  hereditaryRisk += CONSANGUINITY_PENALTY[consanguinidad] || 0;
-  hereditaryRisk = Math.min(10, Math.round(hereditaryRisk));
+  if (razaNorm.includes("border")) {
+    adecuacion += objetivoNorm === "trabajo" ? 2 : 0;
+  }
 
-  // Compatibilidad genética
-  let compatibility = 10 - hereditaryRisk;
-  compatibility = Math.max(1, compatibility);
+  /* --- CONSANGUINIDAD --- */
+  if (consangNorm.includes("alta")) riesgo += 3;
+  if (consangNorm.includes("media")) riesgo += 1;
+  if (consangNorm.includes("baja")) riesgo -= 1;
 
-  // Adecuación al objetivo
-  let suitability = breed.suitableObjectives.includes(objetivo) ? 9 : 5;
+  /* --- ANTECEDENTES --- */
+  if (antecedentesArr.includes("oculares")) riesgo += 1;
+  if (antecedentesArr.includes("neurologicos")) riesgo += 2;
 
-  // Clasificación final
-  let classification = "APTO";
-  if (hereditaryRisk >= 7) classification = "APTO CON CONDICIONES";
-  if (hereditaryRisk >= 9) classification = "NO RECOMENDADO";
+  /* --- LIMITES --- */
+  compatibilidad = Math.max(1, Math.min(10, compatibilidad));
+  riesgo = Math.max(1, Math.min(10, riesgo));
+  adecuacion = Math.max(1, Math.min(10, adecuacion));
+
+  /* --- CLASIFICACION --- */
+  let clasificacion = "APTO";
+  if (riesgo >= 7) clasificacion = "NO RECOMENDADO";
+  else if (riesgo >= 4) clasificacion = "APTO CON CONDICIONES";
 
   return {
-    classification,
-    scores: {
-      riesgoHereditario: hereditaryRisk,
-      compatibilidadGenetica: compatibility,
-      adecuacionObjetivo: suitability
-    },
-    professionalAssessment: {
-      summary: `Evaluación profesional del cruce para ${raza}.`,
-      recommendation:
-        classification === "APTO"
-          ? "Cruce recomendable bajo prácticas de cría responsable."
-          : classification === "APTO CON CONDICIONES"
-          ? "Cruce viable solo con control genético y sanitario estricto."
-          : "Cruce no recomendable por alto riesgo hereditario.",
-      warnings:
-        hereditaryRisk >= 7
-          ? "Se recomienda seguimiento veterinario especializado."
-          : "Riesgo controlado bajo condiciones normales."
-    }
+    clasificacion,
+    compatibilidad,
+    riesgo,
+    adecuacion,
+    recomendacion:
+      clasificacion === "APTO"
+        ? "Cruce adecuado siguiendo buenas prácticas de selección."
+        : clasificacion === "APTO CON CONDICIONES"
+        ? "Cruce viable con control genético y seguimiento veterinario."
+        : "No recomendable para programas de cría responsable.",
   };
 }
 
-/* =======================
+/* ===============================
    ENDPOINT PRINCIPAL
-======================= */
-
+================================ */
 app.post("/analyze", (req, res) => {
   try {
-    const result = analyzeCross(req.body);
+    const {
+      raza = "",
+      objetivo = "salud",
+      consanguinidad = "baja",
+      antecedentes = [],
+    } = req.body || {};
 
-    if (result.error) {
-      return res.status(400).json(result);
-    }
+    const resultado = evaluarCruce({
+      raza,
+      objetivo,
+      consanguinidad,
+      antecedentes,
+    });
 
-    res.json(result);
-  } catch (err) {
-    console.error(err);
+    res.json({
+      ok: true,
+      input: { raza, objetivo, consanguinidad, antecedentes },
+      resultado,
+      fecha: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("❌ Error en /analyze:", error);
     res.status(500).json({
-      error: "Error interno al generar el análisis profesional."
+      ok: false,
+      error: "Error interno al generar el análisis",
     });
   }
 });
 
-/* =======================
-   SERVER
-======================= */
-
-app.listen(PORT, () => {
-  console.log(`✅ BreedingAI backend activo en puerto ${PORT}`);
+/* ===============================
+   HEALTH CHECK
+================================ */
+app.get("/", (req, res) => {
+  res.send("✅ BreedingAI backend activo");
 });
 
+/* ===============================
+   SERVER
+================================ */
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`✅ BreedingAI backend escuchando en puerto ${PORT}`);
+});

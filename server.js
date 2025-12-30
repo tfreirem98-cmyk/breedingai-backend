@@ -1,6 +1,6 @@
-import express from "express";
-import cors from "cors";
-import { analyzeCross } from "./rules/engine.js";
+const express = require("express");
+const cors = require("cors");
+const { analyzeCross } = require("./rules/engine");
 
 const app = express();
 
@@ -21,6 +21,7 @@ app.post("/analyze", (req, res) => {
     const result = analyzeCross(req.body);
     res.json(result);
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Analysis failed" });
   }
 });

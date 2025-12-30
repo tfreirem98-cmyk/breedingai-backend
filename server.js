@@ -17,7 +17,8 @@ const RISK_VALUES = {
 };
 
 const BREEDS = {
-  "Golden Retriever": {
+  "golden retriever": {
+    displayName: "Golden Retriever",
     risks: {
       hipDysplasia: "high",
       eyeIssues: "medium",
@@ -26,16 +27,9 @@ const BREEDS = {
     temperament: "stable",
     geneticDiversity: "medium"
   },
-  "Pastor Alemán": {
-    risks: {
-      hipDysplasia: "high",
-      neurological: "medium",
-      digestive: "medium"
-    },
-    temperament: "high_drive",
-    geneticDiversity: "low"
-  },
-  "Bulldog Francés": {
+
+  "bulldog francés": {
+    displayName: "Bulldog Francés",
     risks: {
       breathing: "very_high",
       skin: "high",
@@ -44,7 +38,20 @@ const BREEDS = {
     temperament: "stable",
     geneticDiversity: "low"
   },
-  "Dachshund": {
+
+  "pastor alemán": {
+    displayName: "Pastor Alemán",
+    risks: {
+      hipDysplasia: "high",
+      neurological: "medium",
+      digestive: "medium"
+    },
+    temperament: "high_drive",
+    geneticDiversity: "low"
+  },
+
+  "dachshund": {
+    displayName: "Dachshund",
     risks: {
       spine: "very_high",
       obesity: "medium"
@@ -52,7 +59,9 @@ const BREEDS = {
     temperament: "variable",
     geneticDiversity: "medium"
   },
-  "Border Collie": {
+
+  "border collie": {
+    displayName: "Border Collie",
     risks: {
       neurological: "medium",
       behavioral: "high",
@@ -79,6 +88,32 @@ function averageRisk(risks) {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
+function normalize(text) {
+  return text
+    ?.toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeGoal(goalText) {
+  const text = normalize(goalText);
+
+  if (!text) return "health";
+
+  if (text.includes("salud")) return "health";
+  if (text.includes("health")) return "health";
+
+  if (text.includes("morf")) return "morphology";
+  if (text.includes("expo")) return "morphology";
+
+  if (text.includes("trab")) return "work";
+  if (text.includes("trabajo")) return "work";
+
+  return "health";
+}
+
 /* =========================
    RUTA PRINCIPAL
 ========================= */
@@ -91,22 +126,26 @@ app.post("/analyze", (req, res) => {
     antecedentes = []
   } = req.body;
 
-  const breedData = BREEDS[breed];
+  /* -------- NORMALIZACIÓN -------- */
+  const normalizedBreed = normalize(breed);
+  const normalizedGoal = normalizeGoal(goal);
 
-  /* --------- PERFIL GENÉRICO SI NO EXISTE --------- */
+  const breedData = BREEDS[normalizedBreed];
+
+  /* -------- PERFIL GENÉRICO SI NO EXISTE -------- */
   const risks = breedData?.risks || {};
   const temperament = breedData?.temperament || "stable";
   const geneticDiversity = breedData?.geneticDiversity || "medium";
 
-  /* --------- RIESGO BASE --------- */
+  /* -------- RIESGO BASE -------- */
   let hereditaryRisk = averageRisk(risks);
 
-  /* --------- AJUSTES --------- */
+  /* -------- AJUSTES -------- */
   if (consanguinity === "medium") hereditaryRisk += 1;
   if (consanguinity === "high") hereditaryRisk += 3;
 
-  if (goal === "health") hereditaryRisk *= 1.2;
-  if (goal === "morphology") hereditaryRisk *= 0.9;
+  if (normalizedGoal === "health") hereditaryRisk *= 1.2;
+  if (normalizedGoal === "morphology") hereditaryRisk *= 0.9;
 
   antecedentes.forEach(a => {
     if (Object.keys(risks).includes(a)) {
@@ -116,7 +155,7 @@ app.post("/analyze", (req, res) => {
 
   hereditaryRisk = clamp(Math.round(hereditaryRisk));
 
-  /* --------- COMPATIBILIDAD GENÉTICA --------- */
+  /* -------- COMPATIBILIDAD GENÉTICA -------- */
   let geneticCompatibility = 10;
 
   if (consanguinity === "medium") geneticCompatibility -= 2;
@@ -125,25 +164,25 @@ app.post("/analyze", (req, res) => {
 
   geneticCompatibility = clamp(geneticCompatibility);
 
-  /* --------- ADECUACIÓN AL OBJETIVO --------- */
+  /* -------- ADECUACIÓN AL OBJETIVO -------- */
   let goalAdequacy = 8;
 
-  if (goal === "work" && temperament !== "high_drive") {
+  if (normalizedGoal === "work" && temperament !== "high_drive") {
     goalAdequacy -= 2;
   }
 
-  if (goal === "health" && hereditaryRisk > 5) {
+  if (normalizedGoal === "health" && hereditaryRisk > 5) {
     goalAdequacy -= 3;
   }
 
   goalAdequacy = clamp(goalAdequacy);
 
-  /* --------- DECISIÓN FINAL --------- */
+  /* -------- DECISIÓN FINAL -------- */
   let classification = "APTO";
   if (hereditaryRisk >= 7) classification = "NO RECOMENDADO";
   else if (hereditaryRisk >= 4) classification = "APTO CON CONDICIONES";
 
-  /* --------- RESPUESTA (COMPATIBLE CON FRONTEND) --------- */
+  /* -------- RESPUESTA (MISMO FORMATO QUE ANTES) -------- */
   res.json({
     classification,
     scores: {
@@ -185,3 +224,4 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`✅ BreedingAI backend activo en puerto ${PORT}`);
 });
+

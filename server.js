@@ -1,70 +1,72 @@
 import express from "express";
 import cors from "cors";
+import Stripe from "stripe";
+import OpenAI from "openai";
+import { analyzeBase } from "./rules/engine.js";
 
 const app = express();
-
-/* =======================
-   MIDDLEWARE
-======================= */
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"]
-}));
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-/* =======================
-   HEALTH CHECK (IMPORTANTE)
-======================= */
-app.get("/", (req, res) => {
-  res.send("BreedingAI backend OK");
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-/* =======================
-   ANALYSIS ENDPOINT
-======================= */
-app.post("/analyze", (req, res) => {
-  const { breed, objective, consanguinity, antecedentes } = req.body;
+app.get("/", (_, res) => res.json({ status: "BreedingAI backend OK" }));
 
-  if (!breed || !objective || !consanguinity) {
-    return res.status(400).json({ error: "Datos incompletos" });
+/* ===== ANÁLISIS CON IA ===== */
+app.post("/analyze", async (req, res) => {
+  try {
+    const base = analyzeBase(req.body);
+
+    const prompt = `
+Eres un veterinario genetista experto en cría canina profesional.
+Redacta un informe claro, técnico y útil para criadores profesionales.
+
+Datos:
+Raza: ${req.body.breed}
+Objetivo: ${req.body.goal}
+Consanguinidad: ${req.body.inbreeding}
+Antecedentes: ${req.body.issues.join(", ") || "Ninguno"}
+
+Métricas:
+Compatibilidad genética: ${base.genetic}/10
+Riesgo hereditario: ${base.risk}/10
+Adecuación al objetivo: ${base.suitability}/10
+
+Conclusión esperada: ${base.verdict}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4
+    });
+
+    res.json({
+      ...base,
+      report: completion.choices[0].message.content
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Analysis failed" });
   }
+});
 
-  let riesgo = 2;
-  if (consanguinity === "Media") riesgo += 2;
-  if (consanguinity === "Alta") riesgo += 4;
-  riesgo += antecedentes.length;
-
-  const compatibilidad = Math.max(10 - riesgo, 1);
-  const adecuacion =
-    objective === "Salud" ? 8 :
-    objective === "Trabajo" ? 7 : 6;
-
-  let clasificacion = "APTO";
-  if (riesgo >= 6) clasificacion = "APTO CON CONDICIONES";
-  if (riesgo >= 8) clasificacion = "NO RECOMENDADO";
-
-  res.json({
-    clasificacion,
-    compatibilidadGenetica: compatibilidad,
-    riesgoHereditario: riesgo,
-    adecuacionObjetivo: adecuacion,
-    recomendacion:
-      clasificacion === "APTO"
-        ? "Cruce recomendado bajo criterios estándar."
-        : clasificacion === "APTO CON CONDICIONES"
-        ? "Cruce viable con control genético y seguimiento veterinario."
-        : "Cruce no recomendado por alto riesgo hereditario."
+/* ===== STRIPE: CREAR SESIÓN ===== */
+app.post("/create-checkout-session", async (req, res) => {
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    mode: "subscription",
+    line_items: [{ price: req.body.priceId, quantity: 1 }],
+    success_url: req.body.successUrl,
+    cancel_url: req.body.cancelUrl
   });
+
+  res.json({ url: session.url });
 });
 
-/* =======================
-   SERVER START (CLAVE)
-======================= */
-const PORT = process.env.PORT || 10000;
-
-app.listen(PORT, () => {
-  console.log(`BreedingAI backend escuchando en puerto ${PORT}`);
-});
-
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Server running on", PORT));
 
 

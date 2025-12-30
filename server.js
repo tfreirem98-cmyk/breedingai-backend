@@ -2,98 +2,116 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+/* ===============================
+   MIDDLEWARE
+================================ */
 app.use(cors());
 app.use(express.json());
 
 /* ===============================
-   MOTOR DE REGLAS PROFESIONAL
+   BASE DE CONOCIMIENTO (REAL)
 ================================ */
 
-function evaluarCruce(data) {
-  const {
-    raza,
-    objetivo,
-    consanguinidad,
-    antecedentes
-  } = data;
+const RAZAS = {
+  "Golden Retriever": {
+    riesgos: {
+      displasia: 3,
+      oculares: 3,
+      respiratorios: 1,
+      neurologicos: 1
+    },
+    perfil: "equilibrado",
+    trabajo: 8,
+    salud: 7
+  },
+
+  "Bulldog Francés": {
+    riesgos: {
+      displasia: 2,
+      oculares: 2,
+      respiratorios: 5,
+      neurologicos: 2
+    },
+    perfil: "braquicefálico",
+    trabajo: 3,
+    salud: 4
+  },
+
+  "Border Collie": {
+    riesgos: {
+      displasia: 2,
+      oculares: 2,
+      respiratorios: 1,
+      neurologicos: 2
+    },
+    perfil: "trabajo",
+    trabajo: 9,
+    salud: 7
+  }
+};
+
+/* ===============================
+   MOTOR DE EVALUACIÓN
+================================ */
+
+function evaluarCruce({ raza, objetivo, consanguinidad, antecedentes }) {
+  const base = RAZAS[raza];
+
+  if (!base) {
+    return {
+      estado: "NO EVALUABLE",
+      compatibilidad: 0,
+      riesgoHereditario: 0,
+      adecuacionObjetivo: 0,
+      recomendacion: "Raza no reconocida en la base de datos.",
+      advertencias: ["La raza seleccionada no está registrada."]
+    };
+  }
 
   let riesgo = 0;
-  let compatibilidad = 10;
-  let adecuacion = 10;
-  let observaciones = [];
   let advertencias = [];
 
-  // 1. CONSANGUINIDAD
-  if (consanguinidad === "media") {
-    riesgo += 2;
-    compatibilidad -= 1;
-    observaciones.push("Consanguinidad media incrementa riesgo de patologías recesivas.");
-  }
+  // Riesgos por antecedentes
+  antecedentes.forEach(a => {
+    riesgo += base.riesgos[a] || 0;
+    advertencias.push(`Presencia de antecedente: ${a}`);
+  });
 
-  if (consanguinidad === "alta") {
-    riesgo += 4;
-    compatibilidad -= 3;
-    advertencias.push("Consanguinidad alta desaconsejada sin pruebas genéticas.");
-  }
-
-  // 2. ANTECEDENTES
-  if (antecedentes.includes("displasia")) {
+  // Consanguinidad
+  if (consanguinidad === "Alta") {
     riesgo += 3;
-    compatibilidad -= 2;
+    advertencias.push("Consanguinidad alta incrementa riesgos hereditarios.");
   }
+  if (consanguinidad === "Media") riesgo += 1;
 
-  if (antecedentes.includes("respiratorios")) {
-    riesgo += 2;
-  }
+  // Compatibilidad base
+  let compatibilidad = Math.max(10 - riesgo, 3);
 
-  if (antecedentes.includes("oculares")) {
-    riesgo += 2;
-  }
+  // Adecuación al objetivo
+  let adecuacion =
+    objetivo === "Trabajo" ? base.trabajo :
+    objetivo === "Salud" ? base.salud :
+    6;
 
-  if (antecedentes.includes("neurologicos")) {
-    riesgo += 3;
-    compatibilidad -= 2;
-  }
-
-  // 3. OBJETIVO DE CRÍA
-  if (objetivo === "trabajo" && raza === "Bulldog Francés") {
-    adecuacion -= 4;
-    advertencias.push("Raza poco adecuada para trabajo funcional.");
-  }
-
-  if (objetivo === "salud" && riesgo > 5) {
-    adecuacion -= 3;
-  }
-
-  // NORMALIZACIÓN
-  riesgo = Math.min(10, riesgo);
-  compatibilidad = Math.max(0, compatibilidad);
-  adecuacion = Math.max(0, adecuacion);
-
-  // CLASIFICACIÓN FINAL
-  let clasificacion = "APTO";
-  if (riesgo >= 6) clasificacion = "APTO CON CONDICIONES";
-  if (riesgo >= 8 || compatibilidad <= 3) clasificacion = "NO RECOMENDADO";
+  // Clasificación final
+  let estado = "APTO";
+  if (riesgo >= 7) estado = "NO RECOMENDADO";
+  else if (riesgo >= 4) estado = "APTO CON CONDICIONES";
 
   return {
-    clasificacion,
-    puntuaciones: {
-      riesgoHereditario: riesgo,
-      compatibilidadGenetica: compatibilidad,
-      adecuacionObjetivo: adecuacion
-    },
-    observaciones,
-    advertencias,
+    estado,
+    compatibilidad,
+    riesgoHereditario: riesgo,
+    adecuacionObjetivo: adecuacion,
     recomendacion:
-      clasificacion === "APTO"
-        ? "Cruce recomendable bajo seguimiento estándar."
-        : clasificacion === "APTO CON CONDICIONES"
+      estado === "NO RECOMENDADO"
+        ? "Cruce desaconsejado por alto riesgo genético."
+        : estado === "APTO CON CONDICIONES"
         ? "Cruce viable solo con control genético y seguimiento veterinario."
-        : "Cruce desaconsejado para programas de cría responsables.",
-    notaTecnica:
-      "Este informe es orientativo y no sustituye pruebas genéticas ni valoración veterinaria especializada.",
-    nivelConfianza:
-      riesgo <= 3 ? "Alta" : riesgo <= 6 ? "Media" : "Baja"
+        : "Cruce recomendable bajo seguimiento estándar.",
+    advertencias
   };
 }
 
@@ -103,14 +121,47 @@ function evaluarCruce(data) {
 
 app.post("/analyze", (req, res) => {
   try {
-    const resultado = evaluarCruce(req.body);
-    res.json(resultado);
-  } catch (error) {
-    res.status(500).json({ error: "Error en análisis profesional" });
+    const { raza, objetivo, consanguinidad, antecedentes } = req.body;
+
+    if (!raza || !objetivo || !consanguinidad) {
+      return res.status(400).json({
+        error: "Datos incompletos"
+      });
+    }
+
+    const resultado = evaluarCruce({
+      raza,
+      objetivo,
+      consanguinidad,
+      antecedentes: antecedentes || []
+    });
+
+    return res.json({
+      success: true,
+      resultado
+    });
+
+  } catch (err) {
+    console.error("Error análisis:", err);
+    res.status(500).json({
+      success: false,
+      error: "Error interno del servidor"
+    });
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () =>
-  console.log("🧬 BreedingAI backend activo en puerto", PORT)
-);
+/* ===============================
+   HEALTH CHECK
+================================ */
+
+app.get("/", (req, res) => {
+  res.send("BreedingAI backend operativo");
+});
+
+/* ===============================
+   START SERVER
+================================ */
+
+app.listen(PORT, () => {
+  console.log(`✅ BreedingAI backend escuchando en puerto ${PORT}`);
+});

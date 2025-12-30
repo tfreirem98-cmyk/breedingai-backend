@@ -1,28 +1,20 @@
-import breeds from "./breeds.js";
+const breeds = require("./breeds");
 
-export function analyzeCross(data) {
+function analyzeCross(data) {
   const breed = breeds[data.breed];
-
-  if (!breed) {
-    throw new Error("Unknown breed");
-  }
+  if (!breed) throw new Error("Unknown breed");
 
   let genetic = 10 - data.consanguinity * 3;
   let risk = breed.baseRisk + data.conditions.length * 2;
   let goalScore = data.goal === "Salud" ? 8 : 6;
-
-  genetic = Math.max(1, Math.min(10, genetic));
-  risk = Math.max(0, Math.min(10, risk));
 
   return {
     status: risk <= 5 ? "APTO" : "APTO CON CONDICIONES",
     genetic,
     risk,
     goalScore,
-    explanation: `
-Cruce evaluado para ${data.breed}.
-Nivel de riesgo ${risk}/10.
-Recomendado solo con control veterinario.
-    `
+    explanation: `Cruce evaluado para ${data.breed}. Riesgo ${risk}/10.`
   };
 }
+
+module.exports = { analyzeCross };

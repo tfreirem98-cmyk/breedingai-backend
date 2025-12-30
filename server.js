@@ -1,113 +1,73 @@
 import express from "express";
 import cors from "cors";
-import { BREEDS } from "./rules/breeds.js";
+
+import { analyzeBreeding } from "./rules/engine.js";
 
 const app = express();
+
+/* ==========================
+   CONFIG
+========================== */
+
 app.use(cors());
 app.use(express.json());
 
-/* =============================
-   UTILIDADES
-============================= */
+const PORT = process.env.PORT || 10000;
 
-function clamp(value, min = 0, max = 10) {
-  return Math.max(min, Math.min(max, value));
-}
+/* ==========================
+   HEALTH CHECK
+========================== */
 
-/* =============================
-   ENDPOINTS
-============================= */
-
-app.get("/breeds", (req, res) => {
+app.get("/", (req, res) => {
   res.json({
-    breeds: Object.keys(BREEDS)
+    status: "ok",
+    service: "BreedingAI backend",
+    version: "1.0.0"
   });
 });
+
+/* ==========================
+   ANALYZE ENDPOINT
+========================== */
 
 app.post("/analyze", (req, res) => {
-  const {
-    breed,
-    objective,
-    consanguinity,
-    antecedentes = []
-  } = req.body;
+  try {
+    const {
+      breed,
+      objective,
+      consanguinity,
+      antecedentes
+    } = req.body;
 
-  if (!breed || !BREEDS[breed]) {
-    return res.status(400).json({ error: "Raza no válida" });
+    // Validación mínima (no rompe frontend)
+    if (!breed || !objective || !consanguinity) {
+      return res.status(400).json({
+        error: "Faltan datos obligatorios"
+      });
+    }
+
+    const result = analyzeBreeding({
+      breed,
+      objective,
+      consanguinity,
+      antecedentes: Array.isArray(antecedentes) ? antecedentes : []
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error("❌ Error en análisis:", error.message);
+
+    return res.status(500).json({
+      error: "Error interno al generar el análisis"
+    });
   }
-
-  const breedData = BREEDS[breed];
-
-  /* -----------------------------
-     RIESGO HEREDITARIO
-  ----------------------------- */
-  let riesgo = breedData.baseRisk;
-
-  if (consanguinity === "media") riesgo += 2;
-  if (consanguinity === "alta") riesgo += 4;
-
-  antecedentes.forEach(a => {
-    if (breedData.commonIssues.includes(a)) riesgo += 2;
-    else riesgo += 1;
-  });
-
-  riesgo = clamp(riesgo);
-
-  /* -----------------------------
-     COMPATIBILIDAD GENÉTICA
-  ----------------------------- */
-  let compatibilidad = 10 - riesgo;
-  compatibilidad = clamp(compatibilidad);
-
-  /* -----------------------------
-     ADECUACIÓN AL OBJETIVO
-  ----------------------------- */
-  let adecuacion = 5;
-
-  if (objective === "salud") adecuacion = breedData.healthAffinity;
-  if (objective === "trabajo") adecuacion = breedData.workAffinity;
-  if (objective === "morfologia") adecuacion = 6;
-
-  adecuacion = clamp(adecuacion);
-
-  /* -----------------------------
-     CLASIFICACIÓN FINAL
-  ----------------------------- */
-  let clasificacion = "APTO";
-  let recomendacion = "Cruce recomendable bajo criterios estándar.";
-
-  if (riesgo >= 7) {
-    clasificacion = "APTO CON CONDICIONES";
-    recomendacion =
-      "Cruce viable únicamente con control genético y seguimiento veterinario.";
-  }
-
-  if (riesgo >= 9) {
-    clasificacion = "NO RECOMENDADO";
-    recomendacion =
-      "Cruce no recomendado por alto riesgo hereditario.";
-  }
-
-  /* -----------------------------
-     RESPUESTA FINAL (ESTABLE)
-  ----------------------------- */
-  res.json({
-    clasificacion,
-    scores: {
-      riesgoHereditario: riesgo,
-      compatibilidadGenetica: compatibilidad,
-      adecuacionObjetivo: adecuacion
-    },
-    recomendacion
-  });
 });
 
-/* =============================
-   START
-============================= */
+/* ==========================
+   START SERVER
+========================== */
 
-const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`BreedingAI backend escuchando en puerto ${PORT}`);
+  console.log(`✅ BreedingAI backend escuchando en puerto ${PORT}`);
 });
 

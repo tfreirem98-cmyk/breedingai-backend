@@ -2,133 +2,115 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
-
-/* ===============================
-   MIDDLEWARE
-================================ */
 app.use(cors());
 app.use(express.json());
 
 /* ===============================
-   UTILIDADES
-================================ */
-function normalizarTexto(valor) {
-  if (!valor) return "";
-  return valor.toString().trim().toLowerCase();
-}
-
-function asegurarArray(valor) {
-  if (!valor) return [];
-  if (Array.isArray(valor)) return valor;
-  return [valor];
-}
-
-/* ===============================
    MOTOR DE REGLAS PROFESIONAL
 ================================ */
-function evaluarCruce({ raza, objetivo, consanguinidad, antecedentes }) {
-  let compatibilidad = 7;
-  let riesgo = 5;
-  let adecuacion = 7;
 
-  const razaNorm = normalizarTexto(raza);
-  const objetivoNorm = normalizarTexto(objetivo);
-  const consangNorm = normalizarTexto(consanguinidad);
-  const antecedentesArr = asegurarArray(antecedentes).map(normalizarTexto);
+function evaluarCruce(data) {
+  const {
+    raza,
+    objetivo,
+    consanguinidad,
+    antecedentes
+  } = data;
 
-  /* --- AJUSTES POR RAZA --- */
-  if (razaNorm.includes("golden")) {
-    riesgo += antecedentesArr.includes("displasia") ? 2 : 0;
-    adecuacion += objetivoNorm === "salud" ? 1 : 0;
-  }
+  let riesgo = 0;
+  let compatibilidad = 10;
+  let adecuacion = 10;
+  let observaciones = [];
+  let advertencias = [];
 
-  if (razaNorm.includes("bulldog")) {
-    riesgo += antecedentesArr.includes("respiratorios") ? 3 : 1;
+  // 1. CONSANGUINIDAD
+  if (consanguinidad === "media") {
+    riesgo += 2;
     compatibilidad -= 1;
+    observaciones.push("Consanguinidad media incrementa riesgo de patologías recesivas.");
   }
 
-  if (razaNorm.includes("border")) {
-    adecuacion += objetivoNorm === "trabajo" ? 2 : 0;
+  if (consanguinidad === "alta") {
+    riesgo += 4;
+    compatibilidad -= 3;
+    advertencias.push("Consanguinidad alta desaconsejada sin pruebas genéticas.");
   }
 
-  /* --- CONSANGUINIDAD --- */
-  if (consangNorm.includes("alta")) riesgo += 3;
-  if (consangNorm.includes("media")) riesgo += 1;
-  if (consangNorm.includes("baja")) riesgo -= 1;
+  // 2. ANTECEDENTES
+  if (antecedentes.includes("displasia")) {
+    riesgo += 3;
+    compatibilidad -= 2;
+  }
 
-  /* --- ANTECEDENTES --- */
-  if (antecedentesArr.includes("oculares")) riesgo += 1;
-  if (antecedentesArr.includes("neurologicos")) riesgo += 2;
+  if (antecedentes.includes("respiratorios")) {
+    riesgo += 2;
+  }
 
-  /* --- LIMITES --- */
-  compatibilidad = Math.max(1, Math.min(10, compatibilidad));
-  riesgo = Math.max(1, Math.min(10, riesgo));
-  adecuacion = Math.max(1, Math.min(10, adecuacion));
+  if (antecedentes.includes("oculares")) {
+    riesgo += 2;
+  }
 
-  /* --- CLASIFICACION --- */
+  if (antecedentes.includes("neurologicos")) {
+    riesgo += 3;
+    compatibilidad -= 2;
+  }
+
+  // 3. OBJETIVO DE CRÍA
+  if (objetivo === "trabajo" && raza === "Bulldog Francés") {
+    adecuacion -= 4;
+    advertencias.push("Raza poco adecuada para trabajo funcional.");
+  }
+
+  if (objetivo === "salud" && riesgo > 5) {
+    adecuacion -= 3;
+  }
+
+  // NORMALIZACIÓN
+  riesgo = Math.min(10, riesgo);
+  compatibilidad = Math.max(0, compatibilidad);
+  adecuacion = Math.max(0, adecuacion);
+
+  // CLASIFICACIÓN FINAL
   let clasificacion = "APTO";
-  if (riesgo >= 7) clasificacion = "NO RECOMENDADO";
-  else if (riesgo >= 4) clasificacion = "APTO CON CONDICIONES";
+  if (riesgo >= 6) clasificacion = "APTO CON CONDICIONES";
+  if (riesgo >= 8 || compatibilidad <= 3) clasificacion = "NO RECOMENDADO";
 
   return {
     clasificacion,
-    compatibilidad,
-    riesgo,
-    adecuacion,
+    puntuaciones: {
+      riesgoHereditario: riesgo,
+      compatibilidadGenetica: compatibilidad,
+      adecuacionObjetivo: adecuacion
+    },
+    observaciones,
+    advertencias,
     recomendacion:
       clasificacion === "APTO"
-        ? "Cruce adecuado siguiendo buenas prácticas de selección."
+        ? "Cruce recomendable bajo seguimiento estándar."
         : clasificacion === "APTO CON CONDICIONES"
-        ? "Cruce viable con control genético y seguimiento veterinario."
-        : "No recomendable para programas de cría responsable.",
+        ? "Cruce viable solo con control genético y seguimiento veterinario."
+        : "Cruce desaconsejado para programas de cría responsables.",
+    notaTecnica:
+      "Este informe es orientativo y no sustituye pruebas genéticas ni valoración veterinaria especializada.",
+    nivelConfianza:
+      riesgo <= 3 ? "Alta" : riesgo <= 6 ? "Media" : "Baja"
   };
 }
 
 /* ===============================
    ENDPOINT PRINCIPAL
 ================================ */
+
 app.post("/analyze", (req, res) => {
   try {
-    const {
-      raza = "",
-      objetivo = "salud",
-      consanguinidad = "baja",
-      antecedentes = [],
-    } = req.body || {};
-
-    const resultado = evaluarCruce({
-      raza,
-      objetivo,
-      consanguinidad,
-      antecedentes,
-    });
-
-    res.json({
-      ok: true,
-      input: { raza, objetivo, consanguinidad, antecedentes },
-      resultado,
-      fecha: new Date().toISOString(),
-    });
+    const resultado = evaluarCruce(req.body);
+    res.json(resultado);
   } catch (error) {
-    console.error("❌ Error en /analyze:", error);
-    res.status(500).json({
-      ok: false,
-      error: "Error interno al generar el análisis",
-    });
+    res.status(500).json({ error: "Error en análisis profesional" });
   }
 });
 
-/* ===============================
-   HEALTH CHECK
-================================ */
-app.get("/", (req, res) => {
-  res.send("✅ BreedingAI backend activo");
-});
-
-/* ===============================
-   SERVER
-================================ */
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`✅ BreedingAI backend escuchando en puerto ${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log("🧬 BreedingAI backend activo en puerto", PORT)
+);

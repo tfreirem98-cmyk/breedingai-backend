@@ -1,287 +1,139 @@
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";
 
 const app = express();
+const PORT = process.env.PORT || 10000;
 
-/* ===========================
+/* =======================
    MIDDLEWARE
-=========================== */
+======================= */
 app.use(cors());
 app.use(express.json());
 
-/* ===========================
-   OPENAI CONFIG
-=========================== */
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+/* =======================
+   BASE DE CONOCIMIENTO
+======================= */
 
-/* ===========================
-   BASE DE CONOCIMIENTO (PERROS)
-=========================== */
-
-const BREEDS = {
+const BREED_PROFILES = {
   "Golden Retriever": {
-    baseRisk: 3,
-    risks: {
-      displasia: 3,
-      ocular: 2
-    },
-    notes: "Predisposición conocida a displasia de cadera y problemas oculares."
-  },
-  "Labrador Retriever": {
-    baseRisk: 3,
-    risks: {
-      displasia: 3,
-      ocular: 1
-    },
-    notes: "Riesgo moderado de displasia y problemas articulares."
+    baseRisk: 4,
+    commonIssues: ["displasia", "oculares"],
+    temperament: "equilibrado",
+    suitableObjectives: ["salud", "familia"]
   },
   "Bulldog Francés": {
-    baseRisk: 6,
-    risks: {
-      respiratorio: 4,
-      neurologico: 2
-    },
-    notes: "Raza braquicefálica con alto riesgo respiratorio."
-  },
-  "Bulldog Inglés": {
     baseRisk: 7,
-    risks: {
-      respiratorio: 4,
-      displasia: 2
-    },
-    notes: "Alta carga genética y problemas respiratorios frecuentes."
-  },
-  "Pastor Alemán": {
-    baseRisk: 4,
-    risks: {
-      displasia: 4
-    },
-    notes: "Alta incidencia de displasia de cadera."
+    commonIssues: ["respiratorios", "neurologicos"],
+    temperament: "braquicefálico",
+    suitableObjectives: ["salud"]
   },
   "Border Collie": {
-    baseRisk: 2,
-    risks: {
-      neurologico: 2,
-      ocular: 1
-    },
-    notes: "Generalmente sano, pero con riesgo neurológico hereditario."
-  },
-  "Caniche": {
-    baseRisk: 2,
-    risks: {
-      ocular: 2
-    },
-    notes: "Riesgo ocular hereditario moderado."
-  },
-  "Teckel": {
-    baseRisk: 4,
-    risks: {
-      neurologico: 4
-    },
-    notes: "Alta predisposición a problemas de columna."
-  },
-  "Yorkshire Terrier": {
-    baseRisk: 3,
-    risks: {
-      respiratorio: 1,
-      neurologico: 2
-    },
-    notes: "Riesgo neurológico moderado."
-  },
-  "Chihuahua": {
-    baseRisk: 3,
-    risks: {
-      neurologico: 2,
-      respiratorio: 1
-    },
-    notes: "Fragilidad neurológica y craneal."
-  },
-  "Rottweiler": {
-    baseRisk: 4,
-    risks: {
-      displasia: 4
-    },
-    notes: "Alta incidencia de displasia."
-  },
-  "Husky Siberiano": {
-    baseRisk: 3,
-    risks: {
-      ocular: 2
-    },
-    notes: "Problemas oculares hereditarios conocidos."
-  },
-  "Otra": {
-    baseRisk: 3,
-    risks: {},
-    notes: "Evaluación genérica sin datos específicos de raza."
+    baseRisk: 5,
+    commonIssues: ["neurologicos", "oculares"],
+    temperament: "alta energía",
+    suitableObjectives: ["rendimiento", "trabajo"]
   }
 };
 
-/* ===========================
-   UTILIDADES
-=========================== */
+const CONSANGUINITY_PENALTY = {
+  baja: 0,
+  media: 2,
+  alta: 4
+};
 
-const clamp = (v, min = 0, max = 10) => Math.max(min, Math.min(max, v));
+/* =======================
+   MOTOR DE ANÁLISIS
+======================= */
 
-/* ===========================
-   MOTOR DE REGLAS DEFINITIVO
-=========================== */
-
-function evaluateCross(data) {
-  const { raza, objetivo, consanguinidad, antecedentes } = data;
-  const breed = BREEDS[raza] || BREEDS["Otra"];
-
-  let riesgo = breed.baseRisk;
-  let compatibilidad = 10 - riesgo;
-  let adecuacion = 5;
-  let reglas = [];
-
-  reglas.push(`Perfil racial: ${raza}`);
-  reglas.push(breed.notes);
-
-  /* --- Objetivo de cría --- */
-  if (objetivo === "salud") {
-    riesgo += 1;
-    reglas.push("Objetivo salud: evaluación más estricta");
-  }
-  if (objetivo === "trabajo") {
-    adecuacion += 1;
-    reglas.push("Objetivo trabajo: se prioriza funcionalidad");
-  }
-
-  /* --- Consanguinidad (MULTIPLICADOR) --- */
-  let factor = 1;
-  if (consanguinidad === "moderada") {
-    factor = 1.3;
-    reglas.push("Consanguinidad moderada: incremento de riesgo");
-  }
-  if (consanguinidad === "alta") {
-    factor = 1.7;
-    reglas.push("Consanguinidad alta: incremento severo de riesgo");
-  }
-
-  /* --- Antecedentes --- */
-  antecedentes?.forEach(a => {
-    if (breed.risks[a]) {
-      riesgo += breed.risks[a];
-      compatibilidad -= Math.ceil(breed.risks[a] / 2);
-      reglas.push(`Antecedente crítico detectado: ${a}`);
-    } else {
-      riesgo += 1;
-      reglas.push(`Antecedente no específico: ${a}`);
-    }
-  });
-
-  /* --- Aplicar multiplicador --- */
-  riesgo = clamp(Math.round(riesgo * factor));
-  compatibilidad = clamp(compatibilidad);
-  adecuacion = clamp(adecuacion);
-
-  /* --- BLOQUEOS AUTOMÁTICOS --- */
-  let clasificacion = "APTO";
-
-  if (
-    (raza.includes("Bulldog") && antecedentes?.includes("respiratorio")) ||
-    (raza === "Golden Retriever" && antecedentes?.includes("displasia")) ||
-    (consanguinidad === "alta" && riesgo >= 7)
-  ) {
-    clasificacion = "NO RECOMENDADO";
-    reglas.push("Bloqueo automático por combinación crítica");
-  } else if (riesgo >= 6) {
-    clasificacion = "APTO CON CONDICIONES";
-  }
-
-  return {
+function analyzeCross(data) {
+  const {
     raza,
     objetivo,
-    clasificacion,
+    consanguinidad,
+    antecedentes = []
+  } = data;
+
+  if (!BREED_PROFILES[raza]) {
+    return {
+      error: "Raza no soportada por el sistema profesional."
+    };
+  }
+
+  const breed = BREED_PROFILES[raza];
+
+  // Riesgo hereditario
+  let hereditaryRisk = breed.baseRisk;
+  antecedentes.forEach(a => {
+    if (breed.commonIssues.includes(a)) {
+      hereditaryRisk += 1.5;
+    } else {
+      hereditaryRisk += 0.5;
+    }
+  });
+  hereditaryRisk += CONSANGUINITY_PENALTY[consanguinidad] || 0;
+  hereditaryRisk = Math.min(10, Math.round(hereditaryRisk));
+
+  // Compatibilidad genética
+  let compatibility = 10 - hereditaryRisk;
+  compatibility = Math.max(1, compatibility);
+
+  // Adecuación al objetivo
+  let suitability = breed.suitableObjectives.includes(objetivo) ? 9 : 5;
+
+  // Clasificación final
+  let classification = "APTO";
+  if (hereditaryRisk >= 7) classification = "APTO CON CONDICIONES";
+  if (hereditaryRisk >= 9) classification = "NO RECOMENDADO";
+
+  return {
+    classification,
     scores: {
-      riesgoHereditario: riesgo,
-      compatibilidadGenetica: compatibilidad,
-      adecuacionObjetivo: adecuacion
+      riesgoHereditario: hereditaryRisk,
+      compatibilidadGenetica: compatibility,
+      adecuacionObjetivo: suitability
     },
-    reglasActivadas: reglas
+    professionalAssessment: {
+      summary: `Evaluación profesional del cruce para ${raza}.`,
+      recommendation:
+        classification === "APTO"
+          ? "Cruce recomendable bajo prácticas de cría responsable."
+          : classification === "APTO CON CONDICIONES"
+          ? "Cruce viable solo con control genético y sanitario estricto."
+          : "Cruce no recomendable por alto riesgo hereditario.",
+      warnings:
+        hereditaryRisk >= 7
+          ? "Se recomienda seguimiento veterinario especializado."
+          : "Riesgo controlado bajo condiciones normales."
+    }
   };
 }
 
-/* ===========================
-   PROMPT IA (EXPLICATIVO)
-=========================== */
-
-function buildPrompt(e) {
-  return `
-Eres un asesor técnico en cría canina responsable.
-NO tomas decisiones, solo explicas resultados.
-
-Datos:
-Raza: ${e.raza}
-Objetivo: ${e.objetivo}
-Clasificación: ${e.clasificacion}
-Riesgo: ${e.scores.riesgoHereditario}/10
-Compatibilidad: ${e.scores.compatibilidadGenetica}/10
-Adecuación: ${e.scores.adecuacionObjetivo}/10
-
-Factores aplicados:
-${e.reglasActivadas.map(r => "- " + r).join("\n")}
-
-Redacta un informe profesional, prudente y claro.
-`;
-}
-
-/* ===========================
-   ENDPOINTS
-=========================== */
+/* =======================
+   ENDPOINT PRINCIPAL
+======================= */
 
 app.post("/analyze", (req, res) => {
   try {
-    const result = evaluateCross(req.body);
-    res.json({ success: true, resultado: result });
+    const result = analyzeCross(req.body);
+
+    if (result.error) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    console.error(err);
+    res.status(500).json({
+      error: "Error interno al generar el análisis profesional."
+    });
   }
 });
 
-app.post("/report", async (req, res) => {
-  try {
-    const evaluation = evaluateCross(req.body);
-    const prompt = buildPrompt(evaluation);
-
-    const response = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "Eres un experto en cría canina." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.4
-      })
-    });
-
-    const data = await response.json();
-
-    res.json({
-      success: true,
-      resultado: evaluation,
-      informe: data.choices[0].message.content
-    });
-
-  } catch (err) {
-    res.status(500).json({ success: false, error: "Error al generar informe" });
-  }
-});
-
-/* ===========================
+/* =======================
    SERVER
-=========================== */
+======================= */
 
-const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`✅ BreedingAI backend activo en puerto ${PORT}`);
 });
+

@@ -1,12 +1,30 @@
-module.exports = {
-  "Golden Retriever": { baseRisk: 3 },
-  "Labrador Retriever": { baseRisk: 3 },
-  "Border Collie": { baseRisk: 2 },
-  "Pastor Alemán": { baseRisk: 4 },
-  "Bulldog Francés": { baseRisk: 6 },
-  "Caniche": { baseRisk: 2 },
-  "Doberman": { baseRisk: 4 },
-  "Rottweiler": { baseRisk: 5 },
-  "Husky Siberiano": { baseRisk: 3 },
-  "Beagle": { baseRisk: 2 }
+export const BREEDS = {
+  "Border Collie": {
+    risks: ["Oculares", "Neurológicos"],
+    baseRisk: 2
+  },
+  "Golden Retriever": {
+    risks: ["Displasia", "Oculares"],
+    baseRisk: 3
+  },
+  "Labrador Retriever": {
+    risks: ["Displasia", "Obesidad"],
+    baseRisk: 3
+  },
+  "Pastor Alemán": {
+    risks: ["Displasia", "Neurológicos"],
+    baseRisk: 4
+  },
+  "Caniche": {
+    risks: ["Oculares"],
+    baseRisk: 2
+  },
+  "Bulldog Francés": {
+    risks: ["Respiratorios", "Neurológicos"],
+    baseRisk: 5
+  },
+  "Doberman": {
+    risks: ["Cardíacos", "Neurológicos"],
+    baseRisk: 4
+  }
 };

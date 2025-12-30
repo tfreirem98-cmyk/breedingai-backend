@@ -2,226 +2,172 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
+
+/* ===========================
+   MIDDLEWARE
+=========================== */
 app.use(cors());
 app.use(express.json());
 
-/* =========================
-   DATOS BASE POR RAZA
-========================= */
-
-const RISK_VALUES = {
-  low: 1,
-  medium: 3,
-  high: 5,
-  very_high: 7
-};
+/* ===========================
+   BASE DE CONOCIMIENTO
+=========================== */
 
 const BREEDS = {
-  "golden retriever": {
-    displayName: "Golden Retriever",
-    risks: {
-      hipDysplasia: "high",
-      eyeIssues: "medium",
-      heartIssues: "medium"
+  "Golden Retriever": {
+    baseRisk: 4,
+    problems: {
+      displasia: 3,
+      ocular: 2,
+      respiratorio: 1,
+      neurologico: 2
     },
-    temperament: "stable",
-    geneticDiversity: "medium"
+    objectives: {
+      salud: 0,
+      temperamento: 1,
+      trabajo: -1
+    }
   },
-
-  "bulldog francés": {
-    displayName: "Bulldog Francés",
-    risks: {
-      breathing: "very_high",
-      skin: "high",
-      spine: "medium"
+  "Bulldog Francés": {
+    baseRisk: 7,
+    problems: {
+      displasia: 1,
+      ocular: 1,
+      respiratorio: 4,
+      neurologico: 2
     },
-    temperament: "stable",
-    geneticDiversity: "low"
+    objectives: {
+      salud: 0,
+      temperamento: -1,
+      trabajo: -4
+    }
   },
-
-  "pastor alemán": {
-    displayName: "Pastor Alemán",
-    risks: {
-      hipDysplasia: "high",
-      neurological: "medium",
-      digestive: "medium"
+  "Border Collie": {
+    baseRisk: 3,
+    problems: {
+      displasia: 2,
+      ocular: 1,
+      respiratorio: 0,
+      neurologico: 2
     },
-    temperament: "high_drive",
-    geneticDiversity: "low"
-  },
-
-  "dachshund": {
-    displayName: "Dachshund",
-    risks: {
-      spine: "very_high",
-      obesity: "medium"
-    },
-    temperament: "variable",
-    geneticDiversity: "medium"
-  },
-
-  "border collie": {
-    displayName: "Border Collie",
-    risks: {
-      neurological: "medium",
-      behavioral: "high",
-      hipDysplasia: "medium"
-    },
-    temperament: "high_drive",
-    geneticDiversity: "medium_high"
+    objectives: {
+      salud: 0,
+      temperamento: 2,
+      trabajo: 3
+    }
   }
 };
 
-/* =========================
+/* ===========================
    UTILIDADES
-========================= */
+=========================== */
 
 function clamp(value, min = 0, max = 10) {
   return Math.max(min, Math.min(max, value));
 }
 
-function averageRisk(risks) {
-  const values = Object.values(risks).map(
-    r => RISK_VALUES[r] ?? 0
-  );
-  if (values.length === 0) return 2;
-  return values.reduce((a, b) => a + b, 0) / values.length;
+/* ===========================
+   MOTOR DE REGLAS
+=========================== */
+
+function evaluateCross(data) {
+  const {
+    raza,
+    objetivo,
+    consanguinidad,
+    antecedentes
+  } = data;
+
+  const breed = BREEDS[raza];
+  if (!breed) {
+    throw new Error("Raza no soportada");
+  }
+
+  let riesgo = breed.baseRisk;
+  let compatibilidad = 10 - breed.baseRisk;
+  let adecuacion = 5;
+
+  // Consanguinidad
+  if (consanguinidad === "moderada") {
+    riesgo += 2;
+    compatibilidad -= 2;
+  }
+  if (consanguinidad === "alta") {
+    riesgo += 4;
+    compatibilidad -= 4;
+  }
+
+  // Antecedentes
+  if (antecedentes?.length) {
+    antecedentes.forEach((a) => {
+      if (breed.problems[a]) {
+        riesgo += breed.problems[a];
+        compatibilidad -= Math.ceil(breed.problems[a] / 2);
+      }
+    });
+  }
+
+  // Objetivo
+  if (breed.objectives[objetivo] !== undefined) {
+    adecuacion += breed.objectives[objetivo];
+    if (breed.objectives[objetivo] < 0) {
+      riesgo += Math.abs(breed.objectives[objetivo]);
+    }
+  }
+
+  riesgo = clamp(riesgo);
+  compatibilidad = clamp(compatibilidad);
+  adecuacion = clamp(adecuacion);
+
+  let clasificacion = "APTO";
+  if (riesgo >= 7) clasificacion = "NO RECOMENDADO";
+  else if (riesgo >= 4) clasificacion = "APTO CON CONDICIONES";
+
+  return {
+    clasificacion,
+    scores: {
+      riesgoHereditario: riesgo,
+      compatibilidadGenetica: compatibilidad,
+      adecuacionObjetivo: adecuacion
+    }
+  };
 }
 
-function normalize(text) {
-  return text
-    ?.toString()
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function normalizeGoal(goalText) {
-  const text = normalize(goalText);
-
-  if (!text) return "health";
-
-  if (text.includes("salud")) return "health";
-  if (text.includes("health")) return "health";
-
-  if (text.includes("morf")) return "morphology";
-  if (text.includes("expo")) return "morphology";
-
-  if (text.includes("trab")) return "work";
-  if (text.includes("trabajo")) return "work";
-
-  return "health";
-}
-
-/* =========================
-   RUTA PRINCIPAL
-========================= */
+/* ===========================
+   ENDPOINT PRINCIPAL
+=========================== */
 
 app.post("/analyze", (req, res) => {
-  const {
-    breed,
-    goal,
-    consanguinity = "low",
-    antecedentes = []
-  } = req.body;
+  try {
+    const result = evaluateCross(req.body);
 
-  /* -------- NORMALIZACIÓN -------- */
-  const normalizedBreed = normalize(breed);
-  const normalizedGoal = normalizeGoal(goal);
-
-  const breedData = BREEDS[normalizedBreed];
-
-  /* -------- PERFIL GENÉRICO SI NO EXISTE -------- */
-  const risks = breedData?.risks || {};
-  const temperament = breedData?.temperament || "stable";
-  const geneticDiversity = breedData?.geneticDiversity || "medium";
-
-  /* -------- RIESGO BASE -------- */
-  let hereditaryRisk = averageRisk(risks);
-
-  /* -------- AJUSTES -------- */
-  if (consanguinity === "medium") hereditaryRisk += 1;
-  if (consanguinity === "high") hereditaryRisk += 3;
-
-  if (normalizedGoal === "health") hereditaryRisk *= 1.2;
-  if (normalizedGoal === "morphology") hereditaryRisk *= 0.9;
-
-  antecedentes.forEach(a => {
-    if (Object.keys(risks).includes(a)) {
-      hereditaryRisk += 2;
-    }
-  });
-
-  hereditaryRisk = clamp(Math.round(hereditaryRisk));
-
-  /* -------- COMPATIBILIDAD GENÉTICA -------- */
-  let geneticCompatibility = 10;
-
-  if (consanguinity === "medium") geneticCompatibility -= 2;
-  if (consanguinity === "high") geneticCompatibility -= 4;
-  if (geneticDiversity === "low") geneticCompatibility -= 2;
-
-  geneticCompatibility = clamp(geneticCompatibility);
-
-  /* -------- ADECUACIÓN AL OBJETIVO -------- */
-  let goalAdequacy = 8;
-
-  if (normalizedGoal === "work" && temperament !== "high_drive") {
-    goalAdequacy -= 2;
+    res.json({
+      success: true,
+      resultado: result,
+      notaTecnica:
+        "Este informe es una herramienta de apoyo a la decisión y no sustituye la evaluación veterinaria especializada."
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
-
-  if (normalizedGoal === "health" && hereditaryRisk > 5) {
-    goalAdequacy -= 3;
-  }
-
-  goalAdequacy = clamp(goalAdequacy);
-
-  /* -------- DECISIÓN FINAL -------- */
-  let classification = "APTO";
-  if (hereditaryRisk >= 7) classification = "NO RECOMENDADO";
-  else if (hereditaryRisk >= 4) classification = "APTO CON CONDICIONES";
-
-  /* -------- RESPUESTA (MISMO FORMATO QUE ANTES) -------- */
-  res.json({
-    classification,
-    scores: {
-      hereditaryRisk,
-      geneticCompatibility,
-      goalAdequacy
-    },
-    summary: {
-      shortDecision:
-        classification === "APTO"
-          ? "Cruce viable según los criterios actuales."
-          : classification === "APTO CON CONDICIONES"
-          ? "Cruce viable con controles y limitaciones."
-          : "Cruce no recomendado según el nivel de riesgo detectado."
-    },
-    recommendations: {
-      breedingAdvice: [
-        hereditaryRisk >= 5
-          ? "Aplicar controles genéticos y limitar la repetición del cruce."
-          : "Mantener buenas prácticas de selección y seguimiento veterinario."
-      ]
-    },
-    finalDecision: {
-      warning:
-        hereditaryRisk >= 7
-          ? "Riesgo elevado de problemas hereditarios si se realiza este cruce."
-          : hereditaryRisk >= 4
-          ? "Se recomienda precaución y evaluación veterinaria previa."
-          : ""
-    }
-  });
 });
 
-/* =========================
+/* ===========================
+   HEALTH CHECK
+=========================== */
+
+app.get("/", (req, res) => {
+  res.send("BreedingAI backend operativo");
+});
+
+/* ===========================
    SERVER
-========================= */
+=========================== */
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`✅ BreedingAI backend activo en puerto ${PORT}`);
+  console.log(`✅ BreedingAI backend escuchando en puerto ${PORT}`);
 });
-

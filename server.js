@@ -4,52 +4,33 @@ import cors from "cors";
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-/* ===============================
-   MIDDLEWARE
-================================ */
 app.use(cors());
 app.use(express.json());
 
 /* ===============================
-   BASE DE CONOCIMIENTO (REAL)
+   BASE DE RAZAS (AMPLIA)
 ================================ */
 
 const RAZAS = {
-  "Golden Retriever": {
-    riesgos: {
-      displasia: 3,
-      oculares: 3,
-      respiratorios: 1,
-      neurologicos: 1
-    },
-    perfil: "equilibrado",
-    trabajo: 8,
-    salud: 7
-  },
-
-  "Bulldog Francés": {
-    riesgos: {
-      displasia: 2,
-      oculares: 2,
-      respiratorios: 5,
-      neurologicos: 2
-    },
-    perfil: "braquicefálico",
-    trabajo: 3,
-    salud: 4
-  },
-
-  "Border Collie": {
-    riesgos: {
-      displasia: 2,
-      oculares: 2,
-      respiratorios: 1,
-      neurologicos: 2
-    },
-    perfil: "trabajo",
-    trabajo: 9,
-    salud: 7
-  }
+  "Golden Retriever": { trabajo: 7, salud: 7, riesgos: { displasia: 3, oculares: 3, respiratorios: 1, neurologicos: 1 }},
+  "Labrador Retriever": { trabajo: 8, salud: 7, riesgos: { displasia: 3, oculares: 2, respiratorios: 1, neurologicos: 1 }},
+  "Pastor Alemán": { trabajo: 9, salud: 6, riesgos: { displasia: 4, oculares: 2, respiratorios: 1, neurologicos: 2 }},
+  "Bulldog Francés": { trabajo: 3, salud: 4, riesgos: { displasia: 2, oculares: 2, respiratorios: 5, neurologicos: 2 }},
+  "Bulldog Inglés": { trabajo: 2, salud: 3, riesgos: { displasia: 3, oculares: 2, respiratorios: 5, neurologicos: 2 }},
+  "Border Collie": { trabajo: 9, salud: 7, riesgos: { displasia: 2, oculares: 2, respiratorios: 1, neurologicos: 2 }},
+  "Caniche": { trabajo: 6, salud: 8, riesgos: { displasia: 1, oculares: 2, respiratorios: 1, neurologicos: 1 }},
+  "Rottweiler": { trabajo: 8, salud: 6, riesgos: { displasia: 4, oculares: 1, respiratorios: 1, neurologicos: 2 }},
+  "Doberman": { trabajo: 8, salud: 6, riesgos: { displasia: 2, oculares: 1, respiratorios: 1, neurologicos: 3 }},
+  "Chihuahua": { trabajo: 2, salud: 6, riesgos: { displasia: 1, oculares: 2, respiratorios: 2, neurologicos: 2 }},
+  "Yorkshire Terrier": { trabajo: 3, salud: 6, riesgos: { displasia: 1, oculares: 2, respiratorios: 2, neurologicos: 1 }},
+  "Beagle": { trabajo: 7, salud: 7, riesgos: { displasia: 2, oculares: 1, respiratorios: 1, neurologicos: 1 }},
+  "Boxer": { trabajo: 7, salud: 6, riesgos: { displasia: 3, oculares: 2, respiratorios: 2, neurologicos: 2 }},
+  "Husky Siberiano": { trabajo: 8, salud: 7, riesgos: { displasia: 3, oculares: 2, respiratorios: 1, neurologicos: 1 }},
+  "Akita Inu": { trabajo: 7, salud: 6, riesgos: { displasia: 3, oculares: 2, respiratorios: 1, neurologicos: 2 }},
+  "Shiba Inu": { trabajo: 6, salud: 7, riesgos: { displasia: 2, oculares: 2, respiratorios: 1, neurologicos: 1 }},
+  "Cocker Spaniel": { trabajo: 6, salud: 6, riesgos: { displasia: 2, oculares: 3, respiratorios: 1, neurologicos: 1 }},
+  "Dálmata": { trabajo: 7, salud: 6, riesgos: { displasia: 2, oculares: 1, respiratorios: 1, neurologicos: 2 }},
+  "Mastín": { trabajo: 6, salud: 5, riesgos: { displasia: 4, oculares: 1, respiratorios: 2, neurologicos: 2 }}
 };
 
 /* ===============================
@@ -59,43 +40,36 @@ const RAZAS = {
 function evaluarCruce({ raza, objetivo, consanguinidad, antecedentes }) {
   const base = RAZAS[raza];
 
+  let riesgo = 0;
+  let advertencias = [];
+
   if (!base) {
     return {
       estado: "NO EVALUABLE",
       compatibilidad: 0,
       riesgoHereditario: 0,
       adecuacionObjetivo: 0,
-      recomendacion: "Raza no reconocida en la base de datos.",
-      advertencias: ["La raza seleccionada no está registrada."]
+      recomendacion: "Raza no registrada en la base de datos.",
+      advertencias: ["Raza no reconocida"]
     };
   }
 
-  let riesgo = 0;
-  let advertencias = [];
-
-  // Riesgos por antecedentes
   antecedentes.forEach(a => {
     riesgo += base.riesgos[a] || 0;
-    advertencias.push(`Presencia de antecedente: ${a}`);
+    advertencias.push(`Antecedente detectado: ${a}`);
   });
 
-  // Consanguinidad
+  if (consanguinidad === "Media") riesgo += 1;
   if (consanguinidad === "Alta") {
     riesgo += 3;
-    advertencias.push("Consanguinidad alta incrementa riesgos hereditarios.");
+    advertencias.push("Consanguinidad alta incrementa el riesgo genético.");
   }
-  if (consanguinidad === "Media") riesgo += 1;
 
-  // Compatibilidad base
-  let compatibilidad = Math.max(10 - riesgo, 3);
-
-  // Adecuación al objetivo
+  let compatibilidad = Math.max(10 - riesgo, 2);
   let adecuacion =
     objetivo === "Trabajo" ? base.trabajo :
-    objetivo === "Salud" ? base.salud :
-    6;
+    objetivo === "Salud" ? base.salud : 6;
 
-  // Clasificación final
   let estado = "APTO";
   if (riesgo >= 7) estado = "NO RECOMENDADO";
   else if (riesgo >= 4) estado = "APTO CON CONDICIONES";
@@ -110,58 +84,30 @@ function evaluarCruce({ raza, objetivo, consanguinidad, antecedentes }) {
         ? "Cruce desaconsejado por alto riesgo genético."
         : estado === "APTO CON CONDICIONES"
         ? "Cruce viable solo con control genético y seguimiento veterinario."
-        : "Cruce recomendable bajo seguimiento estándar.",
+        : "Cruce recomendable bajo criterios estándar.",
     advertencias
   };
 }
 
 /* ===============================
-   ENDPOINT PRINCIPAL
+   ENDPOINT
 ================================ */
 
 app.post("/analyze", (req, res) => {
-  try {
-    const { raza, objetivo, consanguinidad, antecedentes } = req.body;
+  const { raza, objetivo, consanguinidad, antecedentes = [] } = req.body;
 
-    if (!raza || !objetivo || !consanguinidad) {
-      return res.status(400).json({
-        error: "Datos incompletos"
-      });
-    }
+  const resultado = evaluarCruce({
+    raza,
+    objetivo,
+    consanguinidad,
+    antecedentes
+  });
 
-    const resultado = evaluarCruce({
-      raza,
-      objetivo,
-      consanguinidad,
-      antecedentes: antecedentes || []
-    });
-
-    return res.json({
-      success: true,
-      resultado
-    });
-
-  } catch (err) {
-    console.error("Error análisis:", err);
-    res.status(500).json({
-      success: false,
-      error: "Error interno del servidor"
-    });
-  }
+  res.json({ success: true, resultado });
 });
 
-/* ===============================
-   HEALTH CHECK
-================================ */
-
-app.get("/", (req, res) => {
-  res.send("BreedingAI backend operativo");
-});
-
-/* ===============================
-   START SERVER
-================================ */
+app.get("/", (_, res) => res.send("BreedingAI backend activo"));
 
 app.listen(PORT, () => {
-  console.log(`✅ BreedingAI backend escuchando en puerto ${PORT}`);
+  console.log("BreedingAI backend escuchando en", PORT);
 });

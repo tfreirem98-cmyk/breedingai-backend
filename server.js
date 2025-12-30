@@ -3,23 +3,24 @@ const cors = require("cors");
 
 const app = express();
 
-// CORS — MUY IMPORTANTE
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
+/* ---------- CORS ---------- */
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
 
+app.options("*", cors());
+
+/* ---------- MIDDLEWARE ---------- */
 app.use(express.json());
 
-// Ruta de prueba
+/* ---------- HEALTH CHECK ---------- */
 app.get("/", (req, res) => {
   res.json({ status: "BreedingAI backend OK" });
 });
 
-// RUTA ANALYZE (la que usa el frontend)
+/* ---------- ANALYZE ENDPOINT ---------- */
 app.post("/analyze", (req, res) => {
   const { breed, goal, inbreeding, conditions } = req.body;
 
@@ -27,21 +28,26 @@ app.post("/analyze", (req, res) => {
     return res.status(400).json({ error: "Datos incompletos" });
   }
 
-  // Resultado MOCK estable (luego se conecta IA)
-  const result = {
-    status: "APTO",
-    compatibility: 9,
-    hereditaryRisk: conditions?.length ? 4 : 1,
-    suitability: goal === "Salud" ? 8 : 6,
-    message: "Cruce recomendable bajo criterios profesionales.",
-  };
+  const riskScore = conditions.length * 2 + (inbreeding === "Alta" ? 5 : 1);
 
-  res.json(result);
+  const verdict = riskScore <= 4
+    ? "APTO"
+    : riskScore <= 7
+    ? "RIESGO MODERADO"
+    : "NO RECOMENDADO";
+
+  res.json({
+    verdict,
+    compatibility: Math.max(1, 10 - riskScore),
+    hereditaryRisk: riskScore,
+    goalMatch: goal === "Salud" ? 9 : 7,
+    explanation: `El cruce presenta un nivel de riesgo ${verdict.toLowerCase()} según los parámetros introducidos.`
+  });
 });
 
-// PUERTO (Render lo necesita así)
+/* ---------- START ---------- */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("BreedingAI backend running on port", PORT);
 });
 

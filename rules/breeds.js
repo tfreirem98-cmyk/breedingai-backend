@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   "Golden Retriever": { baseRisk: 3 },
   "Labrador Retriever": { baseRisk: 3 },
   "Border Collie": { baseRisk: 2 },

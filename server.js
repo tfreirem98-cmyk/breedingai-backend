@@ -1,78 +1,73 @@
-import express from "express";
-import cors from "cors";
-import Stripe from "stripe";
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const Stripe = require("stripe");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// ======================
-// CONFIG
-// ======================
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// ======================
-// MIDDLEWARE
-// ======================
-app.use(cors({ origin: "*" }));
+// ===== CONFIG =====
 app.use(express.json());
 
-// ======================
-// HEALTH
-// ======================
+app.use(
+  cors({
+    origin: [
+      "https://breedingai-frontend-two.vercel.app",
+      "http://localhost:3000",
+    ],
+    methods: ["GET", "POST"],
+  })
+);
+
+// ===== HEALTH CHECK =====
 app.get("/", (req, res) => {
-  res.json({ status: "BreedingAI backend online" });
+  res.send("BreedingAI backend OK");
 });
 
-// ======================
-// ANALYSIS (FREE vs PRO)
-// ======================
+// ===== ANALYSIS ENDPOINT =====
 app.post("/analyze", (req, res) => {
-  const { breed, goal, consanguinity, antecedentes, pro } = req.body;
+  const { raza, objetivo, consanguinidad, antecedentes } = req.body;
 
-  let score = 2;
+  let score = 0;
 
-  if (consanguinity === "Media") score += 2;
-  if (consanguinity === "Alta") score += 4;
-  if (antecedentes && antecedentes.length > 0) {
-    score += antecedentes.length * 2;
+  // Consanguinidad
+  if (consanguinidad === "Alta") score += 4;
+  if (consanguinidad === "Media") score += 2;
+
+  // Antecedentes
+  score += antecedentes.length;
+
+  // Razas sensibles
+  if (
+    ["Bulldog Inglés", "Pug", "French Bulldog"].includes(raza)
+  ) {
+    score += 2;
   }
 
-  let verdict = "RIESGO BAJO";
-  if (score >= 5) verdict = "RIESGO MODERADO";
-  if (score >= 8) verdict = "RIESGO ALTO";
+  let veredicto = "RIESGO BAJO";
+  let recomendacion = "Cruce aceptable con seguimiento básico.";
 
-  const base = {
-    verdict,
-    score,
-  };
-
-  // ===== FREE =====
-  if (!pro) {
-    return res.json({
-      ...base,
-      summary:
-        "Resumen básico del análisis. Desbloquea el informe PRO para ver el análisis completo y recomendaciones profesionales.",
-      locked: true,
-    });
+  if (score >= 5) {
+    veredicto = "RIESGO MODERADO";
+    recomendacion =
+      "Se recomienda test genético y reducir consanguinidad.";
   }
 
-  // ===== PRO =====
-  return res.json({
-    ...base,
-    summary: `Evaluación completa del cruce para la raza ${breed}, teniendo en cuenta el objetivo (${goal}), la consanguinidad (${consanguinity}) y los antecedentes clínicos.`,
-    recommendation:
-      verdict === "RIESGO ALTO"
-        ? "Cruce no recomendado sin pruebas genéticas exhaustivas y asesoramiento veterinario especializado."
-        : verdict === "RIESGO MODERADO"
-        ? "Recomendado solo con test genético previo y seguimiento sanitario."
-        : "Cruce compatible con controles sanitarios estándar.",
-    locked: false,
+  if (score >= 8) {
+    veredicto = "RIESGO ALTO";
+    recomendacion =
+      "Cruce no recomendado sin asesoramiento genético profesional.";
+  }
+
+  res.json({
+    veredicto,
+    puntuacion: score,
+    descripcion: `Evaluación basada en raza (${raza}), objetivo (${objetivo}), consanguinidad (${consanguinidad}) y antecedentes.`,
+    recomendacion,
   });
 });
 
-// ======================
-// STRIPE CHECKOUT PRO
-// ======================
+// ===== STRIPE PRO =====
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -85,17 +80,18 @@ app.post("/create-checkout-session", async (req, res) => {
         },
       ],
       success_url: `${process.env.FRONTEND_URL}/app.html?pro=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/app.html`,
+      cancel_url: `${process.env.FRONTEND_URL}/`,
     });
 
     res.json({ url: session.url });
-  } catch (error) {
-    console.error("Stripe error:", error);
+  } catch (err) {
+    console.error("Stripe error:", err);
     res.status(500).json({ error: "Stripe error" });
   }
 });
 
-// ======================
+// ===== SERVER =====
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log("BreedingAI backend running on port", PORT);
+  console.log(`BreedingAI backend running on port ${PORT}`);
 });

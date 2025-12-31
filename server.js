@@ -1,80 +1,100 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import Stripe from "stripe";
-import OpenAI from "openai";
+require("dotenv").config();
 
-dotenv.config();
+const express = require("express");
+const cors = require("cors");
+const Stripe = require("stripe");
+const OpenAI = require("openai");
 
 const app = express();
-app.use(express.json());
-app.use(cors({ origin: "*" }));
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 👉 memoria simple de usos (MVP, luego DB)
-const usageByIp = new Map();
+app.use(cors({ origin: "*" }));
+app.use(express.json());
 
-// ---------- ANALYSIS ----------
+// =====================
+// HEALTH
+// =====================
+app.get("/", (req, res) => {
+  res.send("BreedingAI backend OK");
+});
+
+// =====================
+// ANALYSIS WITH IA
+// =====================
 app.post("/analyze", async (req, res) => {
-  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-  const uses = usageByIp.get(ip) || 0;
+  try {
+    const { raza, objetivo, consanguinidad, antecedentes } = req.body;
 
-  if (uses >= 5 && !req.body.isPro) {
-    return res.status(403).json({ error: "FREE_LIMIT_REACHED" });
-  }
-
-  const { raza, objetivo, consanguinidad, antecedentes } = req.body;
-
-  const prompt = `
-Eres un genetista canino y asesor de criadores profesionales.
-Analiza este cruce con lenguaje técnico y profesional.
+    const prompt = `
+Eres un genetista canino especializado en asesorar criadores profesionales.
+Analiza este cruce con rigor técnico, sin alarmismo ni simplificaciones.
 
 Raza: ${raza}
 Objetivo de cría: ${objetivo}
 Consanguinidad: ${consanguinidad}
-Antecedentes: ${antecedentes.join(", ") || "Ninguno"}
+Antecedentes conocidos: ${antecedentes.length ? antecedentes.join(", ") : "Ninguno"}
 
-Incluye:
-- Evaluación genética predictiva
-- Riesgos estimados
-- Recomendaciones técnicas concretas
-- Uso profesional del resultado
-  `;
+Devuelve:
+1. Veredicto global (RIESGO BAJO / MODERADO / ALTO)
+2. Explicación técnica clara (3–5 frases)
+3. Recomendación profesional concreta
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }]
-  });
+Formato EXACTO:
+VEREDICTO:
+EXPLICACIÓN:
+RECOMENDACIÓN:
+`;
 
-  usageByIp.set(ip, uses + 1);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4
+    });
 
-  res.json({
-    analysis: completion.choices[0].message.content,
-    usesLeft: Math.max(0, 5 - (uses + 1))
-  });
+    const text = completion.choices[0].message.content;
+
+    res.json({ analysis: text });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "IA_ERROR" });
+  }
 });
 
-// ---------- STRIPE ----------
+// =====================
+// STRIPE (NO TOCAR)
+// =====================
 app.post("/create-checkout-session", async (req, res) => {
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price: process.env.STRIPE_PRICE_ID,
-        quantity: 1
-      }
-    ],
-    success_url: `${process.env.FRONTEND_URL}/app.html?pro=1`,
-    cancel_url: `${process.env.FRONTEND_URL}/app.html`
-  });
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: "BreedingAI PRO"
+            },
+            unit_amount: 500,
+            recurring: { interval: "month" }
+          },
+          quantity: 1
+        }
+      ],
+      success_url: "https://breedingai.vercel.app/app.html?pro=1",
+      cancel_url: "https://breedingai.vercel.app/app.html"
+    });
 
-  res.json({ url: session.url });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Stripe error" });
+  }
 });
 
-app.listen(3000, () =>
-  console.log("BreedingAI backend running on port 3000")
-);
-
+// =====================
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("BreedingAI backend running on port", PORT);
+});

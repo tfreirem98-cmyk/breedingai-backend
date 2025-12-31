@@ -1,96 +1,80 @@
-const express = require("express");
-const cors = require("cors");
-const Stripe = require("stripe");
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import Stripe from "stripe";
+import OpenAI from "openai";
+
+dotenv.config();
 
 const app = express();
-
-/* ===============================
-   CONFIG
-================================ */
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
-
 app.use(express.json());
+app.use(cors({ origin: "*" }));
 
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-/* ===============================
-   HEALTH CHECK
-================================ */
-app.get("/", (req, res) => {
-  res.json({ status: "BreedingAI backend OK" });
-});
+// 👉 memoria simple de usos (MVP, luego DB)
+const usageByIp = new Map();
 
-/* ===============================
-   ANALYSIS ENDPOINT
-================================ */
-app.post("/analyze", (req, res) => {
+// ---------- ANALYSIS ----------
+app.post("/analyze", async (req, res) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  const uses = usageByIp.get(ip) || 0;
+
+  if (uses >= 5 && !req.body.isPro) {
+    return res.status(403).json({ error: "FREE_LIMIT_REACHED" });
+  }
+
   const { raza, objetivo, consanguinidad, antecedentes } = req.body;
 
-  let score = 0;
+  const prompt = `
+Eres un genetista canino y asesor de criadores profesionales.
+Analiza este cruce con lenguaje técnico y profesional.
 
-  if (consanguinidad === "Alta") score += 3;
-  if (consanguinidad === "Media") score += 2;
-  if (consanguinidad === "Baja") score += 1;
+Raza: ${raza}
+Objetivo de cría: ${objetivo}
+Consanguinidad: ${consanguinidad}
+Antecedentes: ${antecedentes.join(", ") || "Ninguno"}
 
-  score += antecedentes.length;
+Incluye:
+- Evaluación genética predictiva
+- Riesgos estimados
+- Recomendaciones técnicas concretas
+- Uso profesional del resultado
+  `;
 
-  let verdict = "RIESGO BAJO";
-  if (score >= 4) verdict = "RIESGO MODERADO";
-  if (score >= 6) verdict = "RIESGO ALTO";
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }]
+  });
+
+  usageByIp.set(ip, uses + 1);
 
   res.json({
-    verdict,
-    score,
-    explanation: `Evaluación basada en raza (${raza}), objetivo (${objetivo}), consanguinidad (${consanguinidad}) y antecedentes.`,
-    recommendation:
-      score >= 6
-        ? "Cruce NO recomendado sin estudio genético avanzado."
-        : score >= 4
-        ? "Recomendado realizar test genético previo."
-        : "Cruce aceptable con seguimiento básico."
+    analysis: completion.choices[0].message.content,
+    usesLeft: Math.max(0, 5 - (uses + 1))
   });
 });
 
-/* ===============================
-   STRIPE – CHECKOUT
-================================ */
+// ---------- STRIPE ----------
 app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "subscription",
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: {
-              name: "BreedingAI PRO"
-            },
-            unit_amount: 2900,
-            recurring: { interval: "month" }
-          },
-          quantity: 1
-        }
-      ],
-      success_url: "https://breedingai-frontend-two.vercel.app/success",
-      cancel_url: "https://breedingai-frontend-two.vercel.app/cancel"
-    });
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        price: process.env.STRIPE_PRICE_ID,
+        quantity: 1
+      }
+    ],
+    success_url: `${process.env.FRONTEND_URL}/app.html?pro=1`,
+    cancel_url: `${process.env.FRONTEND_URL}/app.html`
+  });
 
-    res.json({ url: session.url });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Stripe error" });
-  }
+  res.json({ url: session.url });
 });
 
-/* ===============================
-   START SERVER
-================================ */
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log("BreedingAI backend running on port", PORT);
-});
+app.listen(3000, () =>
+  console.log("BreedingAI backend running on port 3000")
+);
+

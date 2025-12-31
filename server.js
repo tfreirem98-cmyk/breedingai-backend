@@ -1,73 +1,64 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const Stripe = require("stripe");
 
 const app = express();
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const PORT = process.env.PORT || 3000;
 
-// ===== CONFIG =====
+// Stripe (solo se usará cuando el botón PRO funcione)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_dummy");
+
+// Middlewares
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
 app.use(express.json());
 
-app.use(
-  cors({
-    origin: [
-      "https://breedingai-frontend-two.vercel.app",
-      "http://localhost:3000",
-    ],
-    methods: ["GET", "POST"],
-  })
-);
-
-// ===== HEALTH CHECK =====
+// Health check (MUY IMPORTANTE para Render)
 app.get("/", (req, res) => {
   res.send("BreedingAI backend OK");
 });
 
-// ===== ANALYSIS ENDPOINT =====
+// =====================
+// ANALYSIS ENDPOINT
+// =====================
 app.post("/analyze", (req, res) => {
   const { raza, objetivo, consanguinidad, antecedentes } = req.body;
 
   let score = 0;
 
-  // Consanguinidad
-  if (consanguinidad === "Alta") score += 4;
+  if (consanguinidad === "Alta") score += 3;
   if (consanguinidad === "Media") score += 2;
+  if (consanguinidad === "Baja") score += 1;
 
-  // Antecedentes
-  score += antecedentes.length;
-
-  // Razas sensibles
-  if (
-    ["Bulldog Inglés", "Pug", "French Bulldog"].includes(raza)
-  ) {
-    score += 2;
+  if (Array.isArray(antecedentes)) {
+    score += antecedentes.length;
   }
 
-  let veredicto = "RIESGO BAJO";
-  let recomendacion = "Cruce aceptable con seguimiento básico.";
-
-  if (score >= 5) {
-    veredicto = "RIESGO MODERADO";
-    recomendacion =
-      "Se recomienda test genético y reducir consanguinidad.";
-  }
-
-  if (score >= 8) {
-    veredicto = "RIESGO ALTO";
-    recomendacion =
-      "Cruce no recomendado sin asesoramiento genético profesional.";
-  }
+  let verdict = "RIESGO BAJO";
+  if (score >= 3) verdict = "RIESGO MODERADO";
+  if (score >= 6) verdict = "RIESGO ALTO";
 
   res.json({
-    veredicto,
-    puntuacion: score,
-    descripcion: `Evaluación basada en raza (${raza}), objetivo (${objetivo}), consanguinidad (${consanguinidad}) y antecedentes.`,
-    recomendacion,
+    verdict,
+    score,
+    explanation: `Evaluación basada en raza (${raza}), objetivo (${objetivo}), consanguinidad (${consanguinidad}) y antecedentes.`,
+    recommendation:
+      verdict === "RIESGO BAJO"
+        ? "Cruce aceptable con seguimiento básico."
+        : verdict === "RIESGO MODERADO"
+        ? "Recomendable control veterinario y pruebas genéticas."
+        : "Cruce no recomendado sin intervención profesional."
   });
 });
 
-// ===== STRIPE PRO =====
+// =====================
+// STRIPE – PRO (AÚN NO CONECTADO EN FRONT)
+// =====================
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -75,23 +66,29 @@ app.post("/create-checkout-session", async (req, res) => {
       payment_method_types: ["card"],
       line_items: [
         {
-          price: process.env.STRIPE_PRICE_PRO,
-          quantity: 1,
-        },
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: "BreedingAI PRO"
+            },
+            unit_amount: 2900,
+            recurring: { interval: "month" }
+          },
+          quantity: 1
+        }
       ],
-      success_url: `${process.env.FRONTEND_URL}/app.html?pro=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/`,
+      success_url: "https://tu-frontend.vercel.app/success",
+      cancel_url: "https://tu-frontend.vercel.app/cancel"
     });
 
     res.json({ url: session.url });
   } catch (err) {
-    console.error("Stripe error:", err);
+    console.error(err);
     res.status(500).json({ error: "Stripe error" });
   }
 });
 
-// ===== SERVER =====
-const PORT = process.env.PORT || 10000;
+// =====================
 app.listen(PORT, () => {
-  console.log(`BreedingAI backend running on port ${PORT}`);
+  console.log(`🚀 BreedingAI backend running on port ${PORT}`);
 });

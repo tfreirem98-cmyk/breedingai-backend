@@ -1,31 +1,32 @@
-require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const Stripe = require("stripe");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Stripe (solo se usará cuando el botón PRO funcione)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_dummy");
-
-// Middlewares
+/* ===============================
+   CONFIG
+================================ */
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type"]
 }));
+
 app.use(express.json());
 
-// Health check (MUY IMPORTANTE para Render)
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+/* ===============================
+   HEALTH CHECK
+================================ */
 app.get("/", (req, res) => {
-  res.send("BreedingAI backend OK");
+  res.json({ status: "BreedingAI backend OK" });
 });
 
-// =====================
-// ANALYSIS ENDPOINT
-// =====================
+/* ===============================
+   ANALYSIS ENDPOINT
+================================ */
 app.post("/analyze", (req, res) => {
   const { raza, objetivo, consanguinidad, antecedentes } = req.body;
 
@@ -35,12 +36,10 @@ app.post("/analyze", (req, res) => {
   if (consanguinidad === "Media") score += 2;
   if (consanguinidad === "Baja") score += 1;
 
-  if (Array.isArray(antecedentes)) {
-    score += antecedentes.length;
-  }
+  score += antecedentes.length;
 
   let verdict = "RIESGO BAJO";
-  if (score >= 3) verdict = "RIESGO MODERADO";
+  if (score >= 4) verdict = "RIESGO MODERADO";
   if (score >= 6) verdict = "RIESGO ALTO";
 
   res.json({
@@ -48,22 +47,22 @@ app.post("/analyze", (req, res) => {
     score,
     explanation: `Evaluación basada en raza (${raza}), objetivo (${objetivo}), consanguinidad (${consanguinidad}) y antecedentes.`,
     recommendation:
-      verdict === "RIESGO BAJO"
-        ? "Cruce aceptable con seguimiento básico."
-        : verdict === "RIESGO MODERADO"
-        ? "Recomendable control veterinario y pruebas genéticas."
-        : "Cruce no recomendado sin intervención profesional."
+      score >= 6
+        ? "Cruce NO recomendado sin estudio genético avanzado."
+        : score >= 4
+        ? "Recomendado realizar test genético previo."
+        : "Cruce aceptable con seguimiento básico."
   });
 });
 
-// =====================
-// STRIPE – PRO (AÚN NO CONECTADO EN FRONT)
-// =====================
+/* ===============================
+   STRIPE – CHECKOUT
+================================ */
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
       payment_method_types: ["card"],
+      mode: "subscription",
       line_items: [
         {
           price_data: {
@@ -77,8 +76,8 @@ app.post("/create-checkout-session", async (req, res) => {
           quantity: 1
         }
       ],
-      success_url: "https://tu-frontend.vercel.app/success",
-      cancel_url: "https://tu-frontend.vercel.app/cancel"
+      success_url: "https://breedingai-frontend-two.vercel.app/success",
+      cancel_url: "https://breedingai-frontend-two.vercel.app/cancel"
     });
 
     res.json({ url: session.url });
@@ -88,7 +87,10 @@ app.post("/create-checkout-session", async (req, res) => {
   }
 });
 
-// =====================
+/* ===============================
+   START SERVER
+================================ */
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 BreedingAI backend running on port ${PORT}`);
+  console.log("BreedingAI backend running on port", PORT);
 });

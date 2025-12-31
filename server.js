@@ -6,67 +6,72 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ======================
-// CONFIGURACIÓN
+// CONFIG
 // ======================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ======================
-// MIDDLEWARES
+// MIDDLEWARE
 // ======================
-app.use(
-  cors({
-    origin: [
-      "https://breeding-ai-frontend-two.vercel.app",
-      "http://localhost:5500",
-    ],
-    methods: ["GET", "POST"],
-  })
-);
-
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 // ======================
-// HEALTH CHECK
+// HEALTH
 // ======================
 app.get("/", (req, res) => {
   res.json({ status: "BreedingAI backend online" });
 });
 
 // ======================
-// ANÁLISIS (LÓGICA + IA SIMULADA)
+// ANALYSIS (FREE vs PRO)
 // ======================
 app.post("/analyze", (req, res) => {
-  const { breed, goal, consanguinity, antecedentes } = req.body;
+  const { breed, goal, consanguinity, antecedentes, pro } = req.body;
 
-  let score = 0;
+  let score = 2;
 
-  if (consanguinity === "Alta") score += 4;
   if (consanguinity === "Media") score += 2;
-  if (goal === "Trabajo") score += 1;
-
-  if (antecedentes?.includes("Displasia")) score += 2;
-  if (antecedentes?.includes("Oculares")) score += 1;
-  if (antecedentes?.includes("Neurológicos")) score += 3;
+  if (consanguinity === "Alta") score += 4;
+  if (antecedentes && antecedentes.length > 0) {
+    score += antecedentes.length * 2;
+  }
 
   let verdict = "RIESGO BAJO";
-  if (score >= 4) verdict = "RIESGO MODERADO";
-  if (score >= 7) verdict = "RIESGO ALTO";
+  if (score >= 5) verdict = "RIESGO MODERADO";
+  if (score >= 8) verdict = "RIESGO ALTO";
 
-  res.json({
+  const base = {
     verdict,
     score,
-    explanation: `Evaluación basada en raza (${breed}), objetivo (${goal}), consanguinidad (${consanguinity}) y antecedentes.`,
+  };
+
+  // ===== FREE =====
+  if (!pro) {
+    return res.json({
+      ...base,
+      summary:
+        "Resumen básico del análisis. Desbloquea el informe PRO para ver el análisis completo y recomendaciones profesionales.",
+      locked: true,
+    });
+  }
+
+  // ===== PRO =====
+  return res.json({
+    ...base,
+    summary: `Evaluación completa del cruce para la raza ${breed}, teniendo en cuenta el objetivo (${goal}), la consanguinidad (${consanguinity}) y los antecedentes clínicos.`,
     recommendation:
       verdict === "RIESGO ALTO"
-        ? "NO recomendado. Riesgo genético elevado."
+        ? "Cruce no recomendado sin pruebas genéticas exhaustivas y asesoramiento veterinario especializado."
         : verdict === "RIESGO MODERADO"
-        ? "Recomendado solo con test genético completo."
-        : "Cruce aceptable con seguimiento básico.",
+        ? "Recomendado solo con test genético previo y seguimiento sanitario."
+        : "Cruce compatible con controles sanitarios estándar.",
+    locked: false,
   });
 });
 
 // ======================
-// STRIPE – PLAN PRO
+// STRIPE CHECKOUT PRO
 // ======================
 app.post("/create-checkout-session", async (req, res) => {
   try {
@@ -79,8 +84,8 @@ app.post("/create-checkout-session", async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.FRONTEND_URL}/app.html?success=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/app.html?canceled=true`,
+      success_url: `${process.env.FRONTEND_URL}/app.html?pro=true`,
+      cancel_url: `${process.env.FRONTEND_URL}/app.html`,
     });
 
     res.json({ url: session.url });
@@ -92,6 +97,5 @@ app.post("/create-checkout-session", async (req, res) => {
 
 // ======================
 app.listen(PORT, () => {
-  console.log(`BreedingAI backend running on port ${PORT}`);
+  console.log("BreedingAI backend running on port", PORT);
 });
-

@@ -6,41 +6,41 @@ const Stripe = require("stripe");
 const OpenAI = require("openai");
 
 const app = express();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ---------- MIDDLEWARE ----------
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-// =====================
-// HEALTH
-// =====================
+// ---------- STRIPE ----------
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// ---------- OPENAI ----------
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// ---------- HEALTH ----------
 app.get("/", (req, res) => {
   res.send("BreedingAI backend OK");
 });
 
-// =====================
-// ANALYSIS WITH IA
-// =====================
+// ---------- ANALYSIS (IA REAL) ----------
 app.post("/analyze", async (req, res) => {
   try {
     const { raza, objetivo, consanguinidad, antecedentes } = req.body;
 
     const prompt = `
-Eres un genetista canino especializado en asesorar criadores profesionales.
-Analiza este cruce con rigor técnico, sin alarmismo ni simplificaciones.
+Eres un genetista canino profesional especializado en asesorar criadores.
+
+Analiza este cruce de forma técnica y clara:
 
 Raza: ${raza}
 Objetivo de cría: ${objetivo}
 Consanguinidad: ${consanguinidad}
-Antecedentes conocidos: ${antecedentes.length ? antecedentes.join(", ") : "Ninguno"}
+Antecedentes: ${antecedentes.length ? antecedentes.join(", ") : "Ninguno"}
 
-Devuelve:
-1. Veredicto global (RIESGO BAJO / MODERADO / ALTO)
-2. Explicación técnica clara (3–5 frases)
-3. Recomendación profesional concreta
+Devuelve EXACTAMENTE este formato:
 
-Formato EXACTO:
 VEREDICTO:
 EXPLICACIÓN:
 RECOMENDACIÓN:
@@ -52,18 +52,16 @@ RECOMENDACIÓN:
       temperature: 0.4
     });
 
-    const text = completion.choices[0].message.content;
-
-    res.json({ analysis: text });
-  } catch (error) {
-    console.error(error);
+    res.json({
+      analysis: completion.choices[0].message.content
+    });
+  } catch (err) {
+    console.error("IA ERROR:", err);
     res.status(500).json({ error: "IA_ERROR" });
   }
 });
 
-// =====================
-// STRIPE (NO TOCAR)
-// =====================
+// ---------- STRIPE CHECKOUT ----------
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -88,12 +86,12 @@ app.post("/create-checkout-session", async (req, res) => {
 
     res.json({ url: session.url });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Stripe error" });
+    console.error("STRIPE ERROR:", err);
+    res.status(500).json({ error: "STRIPE_ERROR" });
   }
 });
 
-// =====================
+// ---------- START ----------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("BreedingAI backend running on port", PORT);

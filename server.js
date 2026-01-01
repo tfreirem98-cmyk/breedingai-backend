@@ -1,123 +1,145 @@
 import express from "express";
 import cors from "cors";
 import Stripe from "stripe";
+import OpenAI from "openai";
 
 const app = express();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const PORT = process.env.PORT || 3000;
 
-app.use(cors({
-  origin: "*",
-}));
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-/* =========================
-   CONTADOR DE USOS (DEMO)
-========================= */
-const usageStore = new Map();
+// =======================
+// USOS GRATIS
+// =======================
+const FREE_LIMIT = 5;
+const usageByIP = new Map();
 
-/* =========================
-   ANALYSIS ENGINE
-========================= */
-function generateAnalysis(data) {
-  const { raza, objetivo, consanguinidad, antecedentes } = data;
+// =======================
+// ANALISIS BASE (ESTABLE)
+// =======================
+function generarAnalisisBase({ raza, objetivo, consanguinidad, antecedentes }) {
+  let puntuacion = 0;
 
-  let score = 0;
+  if (consanguinidad === "Media") puntuacion += 2;
+  if (consanguinidad === "Alta") puntuacion += 4;
 
-  if (consanguinidad === "Alta") score += 4;
-  if (consanguinidad === "Media") score += 2;
-  if (consanguinidad === "Baja") score += 1;
+  puntuacion += antecedentes.length * 1.5;
 
-  score += antecedentes.length;
-
-  if (objetivo === "Trabajo") score += 1;
-  if (objetivo === "Exposición") score += 2;
-
-  if (score > 10) score = 10;
-
-  let verdict = "RIESGO BAJO";
-  if (score >= 4 && score <= 6) verdict = "RIESGO MODERADO";
-  if (score >= 7) verdict = "RIESGO ALTO";
-
-  const explanation = `
-El análisis del cruce entre ejemplares de la raza <strong>${raza}</strong> indica un <strong>${verdict.toLowerCase()}</strong>.
-
-Este resultado se obtiene al evaluar conjuntamente el objetivo de cría (<strong>${objetivo}</strong>), el nivel de consanguinidad (<strong>${consanguinidad}</strong>) y los antecedentes sanitarios conocidos.
-
-Un nivel de consanguinidad <strong>${consanguinidad.toLowerCase()}</strong> incrementa la probabilidad de expresión de rasgos genéticos recesivos, especialmente cuando existen antecedentes coincidentes. En este contexto, la planificación genética es clave para preservar la salud y funcionalidad de la descendencia.
-`;
-
-  const recommendation = `
-Se recomienda realizar <strong>test genéticos preventivos</strong>, evitar cruces repetidos dentro de la misma línea genética y establecer un seguimiento veterinario temprano.
-
-Este cruce es viable, pero debe ejecutarse con criterios profesionales y una estrategia genética a medio y largo plazo.
-`;
+  let veredicto = "RIESGO BAJO";
+  if (puntuacion >= 4 && puntuacion < 7) veredicto = "RIESGO MODERADO";
+  if (puntuacion >= 7) veredicto = "RIESGO ALTO";
 
   return {
-    verdict,
-    score,
-    explanation,
-    recommendation
+    veredicto,
+    puntuacion: Math.round(puntuacion),
+    descripcion: `Cruce evaluado para ${raza} con objetivo ${objetivo}.`,
+    recomendacion:
+      veredicto === "RIESGO ALTO"
+        ? "Cruce desaconsejado sin pruebas genéticas."
+        : "Cruce aceptable con seguimiento."
   };
 }
 
-/* =========================
-   ANALYZE ENDPOINT
-========================= */
+// =======================
+// FREE
+// =======================
 app.post("/analyze", (req, res) => {
-  const userId = req.ip;
-  const isPro = req.headers["x-pro-user"] === "true";
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket.remoteAddress;
 
-  const used = usageStore.get(userId) || 0;
+  const used = usageByIP.get(ip) || 0;
 
-  if (!isPro && used >= 5) {
+  if (used >= FREE_LIMIT) {
     return res.status(403).json({
-      error: "Has alcanzado el límite de 5 análisis gratuitos.",
-      showPro: true
+      error: "FREE_LIMIT_REACHED",
+      message: "Has alcanzado el límite de análisis gratuitos"
     });
   }
 
-  const analysis = generateAnalysis(req.body);
+  usageByIP.set(ip, used + 1);
 
-  if (!isPro) usageStore.set(userId, used + 1);
+  const resultado = generarAnalisisBase(req.body);
 
   res.json({
-    ...analysis,
-    remaining: isPro ? "∞" : Math.max(0, 5 - (used + 1)),
-    pro: isPro
+    usosRestantes: FREE_LIMIT - (used + 1),
+    resultado
   });
 });
 
-/* =========================
-   STRIPE CHECKOUT
-========================= */
+// =======================
+// PRO (IA)
+// =======================
+app.post("/analyze-pro", async (req, res) => {
+  const base = generarAnalisisBase(req.body);
+
+  const prompt = `
+Eres un veterinario especialista en genética canina.
+Redacta un informe profesional basado en:
+
+Raza: ${req.body.raza}
+Objetivo: ${req.body.objetivo}
+Consanguinidad: ${req.body.consanguinidad}
+Antecedentes: ${
+    req.body.antecedentes.length
+      ? req.body.antecedentes.join(", ")
+      : "Ninguno"
+  }
+
+Resultado:
+- Veredicto: ${base.veredicto}
+- Puntuación: ${base.puntuacion}
+
+Informe claro, técnico y profesional.
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.4
+  });
+
+  res.json({
+    resultadoBase: base,
+    informeProfesional: completion.choices[0].message.content
+  });
+});
+
+// =======================
+// STRIPE
+// =======================
 app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      payment_method_types: ["card"],
-      line_items: [{
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    payment_method_types: ["card"],
+    line_items: [
+      {
         price_data: {
           currency: "eur",
-          product_data: {
-            name: "BreedingAI PRO",
-            description: "Análisis genético profesional ilimitado"
-          },
+          product_data: { name: "BreedingAI PRO" },
           unit_amount: 500,
           recurring: { interval: "month" }
         },
         quantity: 1
-      }],
-      success_url: "https://breeding-ai-frontend-two.vercel.app/?pro=success",
-      cancel_url: "https://breeding-ai-frontend-two.vercel.app/"
-    });
+      }
+    ],
+    success_url:
+      "https://breeding-ai-frontend-two.vercel.app/?pro=success",
+    cancel_url:
+      "https://breeding-ai-frontend-two.vercel.app/"
+  });
 
-    res.json({ url: session.url });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.json({ url: session.url });
 });
 
-app.listen(3000, () => {
-  console.log("BreedingAI backend running on port 3000");
+app.listen(PORT, () => {
+  console.log("BreedingAI backend OK");
 });
+
 

@@ -1,7 +1,7 @@
 {
   "name": "breedingai-backend",
   "version": "1.0.0",
-  "description": "Backend BreedingAI con Stripe",
+  "description": "Backend BreedingAI con Stripe e IA profesional",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "cors": "^2.8.5",
-    "stripe": "^14.0.0"
+    "stripe": "^14.0.0",
+    "openai": "^4.47.1"
   }
 }
-

@@ -6,22 +6,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ==================
-// CONFIG
+// CONFIGURACIÓN
 // ==================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// 5 usos gratis por IP (simple y estable)
+// 5 usos gratis por IP (MVP estable)
 const FREE_USES_LIMIT = 5;
 const usageByIP = new Map();
 
 // ==================
 // MIDDLEWARE
 // ==================
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"]
+  })
+);
 
 app.use(express.json());
 
@@ -33,7 +35,54 @@ app.get("/", (req, res) => {
 });
 
 // ==================
-// ANALYSIS ENDPOINT
+// FUNCIÓN DE ANÁLISIS (DINÁMICA)
+// ==================
+function generarAnalisis({ raza, objetivo, consanguinidad, antecedentes }) {
+  let puntuacion = 0;
+
+  if (consanguinidad === "Media") puntuacion += 2;
+  if (consanguinidad === "Alta") puntuacion += 4;
+
+  puntuacion += antecedentes.length * 1.5;
+
+  let veredicto = "RIESGO BAJO";
+  if (puntuacion >= 4 && puntuacion < 7) veredicto = "RIESGO MODERADO";
+  if (puntuacion >= 7) veredicto = "RIESGO ALTO";
+
+  // TEXTO DINÁMICO REAL
+  let descripcion = `El análisis del cruce para la raza ${raza}, con un objetivo de cría orientado a "${objetivo}", muestra un nivel de consanguinidad ${consanguinidad.toLowerCase()}.`;
+
+  if (antecedentes.length > 0) {
+    descripcion += ` Se han identificado antecedentes genéticos relevantes (${antecedentes.join(
+      ", "
+    )}), lo que incrementa el riesgo potencial de transmisión hereditaria.`;
+  } else {
+    descripcion +=
+      " No se han reportado antecedentes genéticos relevantes, lo que reduce el riesgo global estimado.";
+  }
+
+  let recomendacion = "Cruce aceptable bajo seguimiento veterinario estándar.";
+
+  if (veredicto === "RIESGO MODERADO") {
+    recomendacion =
+      "Se recomienda realizar pruebas genéticas preventivas y un seguimiento veterinario especializado antes del cruce.";
+  }
+
+  if (veredicto === "RIESGO ALTO") {
+    recomendacion =
+      "Cruce desaconsejado sin estudios genéticos exhaustivos y asesoramiento profesional especializado.";
+  }
+
+  return {
+    veredicto,
+    puntuacion: Math.round(puntuacion),
+    descripcion,
+    recomendacion
+  };
+}
+
+// ==================
+// ENDPOINT /analyze
 // ==================
 app.post("/analyze", (req, res) => {
   const ip =
@@ -51,46 +100,23 @@ app.post("/analyze", (req, res) => {
 
   usageByIP.set(ip, currentUses + 1);
 
-  const {
+  const { raza, objetivo, consanguinidad, antecedentes = [] } = req.body;
+
+  const resultado = generarAnalisis({
     raza,
     objetivo,
     consanguinidad,
-    antecedentes = []
-  } = req.body;
-
-  // ====== LÓGICA ACTUAL (NO IA AÚN) ======
-  let score = 0;
-
-  if (consanguinidad === "Media") score += 2;
-  if (consanguinidad === "Alta") score += 4;
-
-  score += antecedentes.length;
-
-  let riesgo = "BAJO";
-  if (score >= 3 && score < 6) riesgo = "MODERADO";
-  if (score >= 6) riesgo = "ALTO";
-
-  let recomendacion = "Cruce aceptable con seguimiento básico.";
-  if (riesgo === "MODERADO") {
-    recomendacion = "Recomendado realizar test genético previo.";
-  }
-  if (riesgo === "ALTO") {
-    recomendacion = "Cruce desaconsejado por alto riesgo genético.";
-  }
+    antecedentes
+  });
 
   res.json({
     usosRestantes: FREE_USES_LIMIT - (currentUses + 1),
-    resultado: {
-      veredicto: `RIESGO ${riesgo}`,
-      puntuacion: score,
-      descripcion: `Evaluación basada en raza (${raza}), objetivo (${objetivo}), consanguinidad (${consanguinidad}) y antecedentes.`,
-      recomendacion
-    }
+    resultado
   });
 });
 
 // ==================
-// STRIPE – PRO SUBSCRIPTION
+// STRIPE – PRO
 // ==================
 app.post("/create-checkout-session", async (req, res) => {
   try {
@@ -103,18 +129,19 @@ app.post("/create-checkout-session", async (req, res) => {
             currency: "eur",
             product_data: {
               name: "BreedingAI PRO",
-              description: "Análisis profesionales ilimitados con IA"
+              description:
+                "Análisis profesionales ilimitados con informes avanzados"
             },
             unit_amount: 500,
-            recurring: {
-              interval: "month"
-            }
+            recurring: { interval: "month" }
           },
           quantity: 1
         }
       ],
-      success_url: "https://breeding-ai-frontend-two.vercel.app/?pro=success",
-      cancel_url: "https://breeding-ai-frontend-two.vercel.app/?pro=cancel"
+      success_url:
+        "https://breeding-ai-frontend-two.vercel.app/?pro=success",
+      cancel_url:
+        "https://breeding-ai-frontend-two.vercel.app/?pro=cancel"
     });
 
     res.json({ url: session.url });
@@ -130,4 +157,3 @@ app.post("/create-checkout-session", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`BreedingAI backend running on port ${PORT}`);
 });
-

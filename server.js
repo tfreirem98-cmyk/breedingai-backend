@@ -1,67 +1,29 @@
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const Stripe = require("stripe");
-const OpenAI = require("openai");
 
 const app = express();
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// ---------- MIDDLEWARE ----------
-app.use(cors({ origin: "*" }));
+// ====== MIDDLEWARE ======
+app.use(cors({
+  origin: [
+    "https://breedingai.vercel.app",
+    "https://breedingai-frontend.vercel.app"
+  ],
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 app.use(express.json());
 
-// ---------- STRIPE ----------
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// ---------- OPENAI ----------
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-// ---------- HEALTH ----------
+// ====== HEALTH CHECK ======
 app.get("/", (req, res) => {
-  res.send("BreedingAI backend OK");
+  res.send("BreedingAI backend running");
 });
 
-// ---------- ANALYSIS (IA REAL) ----------
-app.post("/analyze", async (req, res) => {
-  try {
-    const { raza, objetivo, consanguinidad, antecedentes } = req.body;
-
-    const prompt = `
-Eres un genetista canino profesional especializado en asesorar criadores.
-
-Analiza este cruce de forma técnica y clara:
-
-Raza: ${raza}
-Objetivo de cría: ${objetivo}
-Consanguinidad: ${consanguinidad}
-Antecedentes: ${antecedentes.length ? antecedentes.join(", ") : "Ninguno"}
-
-Devuelve EXACTAMENTE este formato:
-
-VEREDICTO:
-EXPLICACIÓN:
-RECOMENDACIÓN:
-`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.4
-    });
-
-    res.json({
-      analysis: completion.choices[0].message.content
-    });
-  } catch (err) {
-    console.error("IA ERROR:", err);
-    res.status(500).json({ error: "IA_ERROR" });
-  }
-});
-
-// ---------- STRIPE CHECKOUT ----------
+// ====== STRIPE CHECKOUT ======
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -71,28 +33,30 @@ app.post("/create-checkout-session", async (req, res) => {
         {
           price_data: {
             currency: "eur",
+            unit_amount: 500, // 5 €
+            recurring: { interval: "month" },
             product_data: {
-              name: "BreedingAI PRO"
-            },
-            unit_amount: 500,
-            recurring: { interval: "month" }
+              name: "BreedingAI PRO",
+              description: "Análisis profesionales ilimitados"
+            }
           },
           quantity: 1
         }
       ],
-      success_url: "https://breedingai.vercel.app/app.html?pro=1",
-      cancel_url: "https://breedingai.vercel.app/app.html"
+      success_url: "https://breedingai.vercel.app/success",
+      cancel_url: "https://breedingai.vercel.app/cancel"
     });
 
     res.json({ url: session.url });
-  } catch (err) {
-    console.error("STRIPE ERROR:", err);
-    res.status(500).json({ error: "STRIPE_ERROR" });
+  } catch (error) {
+    console.error("Stripe error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// ---------- START ----------
+// ====== SERVER START ======
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("BreedingAI backend running on port", PORT);
+  console.log(`Server running on port ${PORT}`);
 });
+

@@ -1,29 +1,41 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const Stripe = require("stripe");
+import express from "express";
+import cors from "cors";
+import Stripe from "stripe";
 
 const app = express();
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// ====== MIDDLEWARE ======
-app.use(cors({
-  origin: [
-    "https://breedingai.vercel.app",
-    "https://breedingai-frontend.vercel.app"
-  ],
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
+/* =========================
+   CONFIGURACIÓN
+========================= */
+
+// ⚠️ TU CLAVE SECRETA DE STRIPE (en Render como variable de entorno)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// FRONTEND PERMITIDO (Vercel)
+const FRONTEND_URL = "https://breeding-ai-frontend-two.vercel.app";
+
+/* =========================
+   MIDDLEWARE
+========================= */
+
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
 
 app.use(express.json());
 
-// ====== HEALTH CHECK ======
+/* =========================
+   RUTAS
+========================= */
+
 app.get("/", (req, res) => {
-  res.send("BreedingAI backend running");
+  res.send("BreedingAI backend OK");
 });
 
-// ====== STRIPE CHECKOUT ======
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -33,30 +45,33 @@ app.post("/create-checkout-session", async (req, res) => {
         {
           price_data: {
             currency: "eur",
-            unit_amount: 500, // 5 €
-            recurring: { interval: "month" },
             product_data: {
               name: "BreedingAI PRO",
-              description: "Análisis profesionales ilimitados"
-            }
+              description:
+                "Análisis avanzados con IA, uso ilimitado y recomendaciones profesionales",
+            },
+            recurring: { interval: "month" },
+            unit_amount: 500, // 5€
           },
-          quantity: 1
-        }
+          quantity: 1,
+        },
       ],
-      success_url: "https://breedingai.vercel.app/success",
-      cancel_url: "https://breedingai.vercel.app/cancel"
+      success_url: `${FRONTEND_URL}/success.html`,
+      cancel_url: `${FRONTEND_URL}/cancel.html`,
     });
 
     res.json({ url: session.url });
   } catch (error) {
     console.error("Stripe error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Stripe error" });
   }
 });
 
-// ====== SERVER START ======
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+/* =========================
+   SERVIDOR
+========================= */
 
+const PORT = process.env.PORT || 4242;
+app.listen(PORT, () =>
+  console.log(`🚀 BreedingAI backend running on port ${PORT}`)
+);

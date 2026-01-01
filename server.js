@@ -15,7 +15,7 @@ const openai = new OpenAI({
 });
 
 // 5 usos gratis por IP
-const FREE_USES_LIMIT = 5;
+const FREE_USES_LIMIT = 3;
 const usageByIP = new Map();
 
 // ==================

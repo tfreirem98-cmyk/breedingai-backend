@@ -1,3 +1,22 @@
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { runAnalysis } from "./rules/engine.js";
+
+dotenv.config();
+
+const app = express();
+
+// Middlewares
+app.use(cors());
+app.use(express.json());
+
+// Health check
+app.get("/", (req, res) => {
+  res.send("BreedingAI backend running");
+});
+
+// Analyze endpoint
 app.post("/analyze", async (req, res) => {
   try {
     const { raza, objetivo, consanguinidad, antecedentes } = req.body;
@@ -6,7 +25,7 @@ app.post("/analyze", async (req, res) => {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    // 🔑 CONVERSIÓN CLAVE: objeto → array
+    // Convertir antecedentes objeto → array
     const antecedentesArray = Object.entries(antecedentes)
       .filter(([_, value]) => value === true)
       .map(([key]) => key);
@@ -19,9 +38,14 @@ app.post("/analyze", async (req, res) => {
     });
 
     res.json(result);
-  } catch (err) {
-    console.error("Error en análisis:", err);
-    res.status(500).json({ error: "Error interno de análisis" });
+  } catch (error) {
+    console.error("Error en /analyze:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
+// Server start
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`BreedingAI backend listening on port ${PORT}`);
+});

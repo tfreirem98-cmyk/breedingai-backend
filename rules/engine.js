@@ -1,55 +1,71 @@
 import OpenAI from "openai";
-import { breedsContext } from "./breeds.js";
+import { breeds } from "./breeds.js";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-export async function runAnalysis({
-  breed,
-  objective,
-  consanguinity,
-  antecedentes
-}) {
-  const breedInfo = breedsContext[breed] || {
-    description: "Raza sin información específica en la base de datos.",
-    knownIssues: []
-  };
+export async function runAnalysis({ raza, objetivo, consanguinidad, antecedentes }) {
+  // --- 1. SCORE BASE (determinista, seguro) ---
+  let score = 0;
+
+  if (consanguinidad === "Alta") score += 5;
+  if (consanguinidad === "Media") score += 3;
+
+  score += antecedentes.length * 2;
+
+  let verdict = "RIESGO BAJO";
+  if (score >= 7) verdict = "RIESGO ALTO";
+  else if (score >= 4) verdict = "RIESGO MODERADO";
+
+  // --- 2. CONTEXTO TÉCNICO PARA LA IA ---
+  const breedInfo = breeds[raza];
 
   const systemPrompt = `
-Eres un veterinario genetista experto en cría canina responsable.
-Tu trabajo es evaluar riesgos genéticos, bienestar animal y sostenibilidad de líneas de cría.
-No des respuestas genéricas ni vagas.
-Justifica siempre tus conclusiones de forma técnica pero comprensible.
+Eres un genetista canino senior y asesor de criaderos profesionales.
+Tu tarea es evaluar cruces de forma crítica, clara y honesta.
+No exageres, pero tampoco suavices riesgos.
+Escribe análisis profesionales, estructurados y accionables.
 `;
 
   const userPrompt = `
-Datos del cruce propuesto:
+Raza: ${raza}
+Objetivo de cría: ${objetivo}
+Nivel de consanguinidad: ${consanguinidad}
+Antecedentes marcados: ${antecedentes.join(", ") || "Ninguno"}
 
-Raza: ${breed}
-Descripción de la raza: ${breedInfo.description}
-Problemas conocidos de la raza: ${breedInfo.knownIssues.join(", ")}
+Riesgos conocidos de la raza:
+${breedInfo ? breedInfo.description : "No especificados"}
 
-Objetivo de cría: ${objective}
-Nivel de consanguinidad declarado: ${consanguinity}
-Antecedentes genéticos detectados: ${antecedentes.length > 0 ? antecedentes.join(", ") : "Ninguno"}
+Puntuación de riesgo calculada: ${score} (${verdict})
 
-Tareas:
-1. Evalúa el riesgo global del cruce (BAJO, MODERADO o ALTO).
-2. Explica el razonamiento genético de forma detallada.
-3. Señala factores críticos y alertas relevantes.
-4. Da una recomendación profesional clara y accionable.
+Redacta un informe profesional con esta estructura:
+
+1. Resumen ejecutivo
+2. Evaluación genética específica de la raza
+3. Impacto de la consanguinidad en este cruce
+4. Alertas críticas
+5. Recomendaciones técnicas concretas
+6. Conclusión profesional
 `;
 
-  const response = await openai.chat.completions.create({
+  // --- 3. LLAMADA A OPENAI ---
+  const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    temperature: 0.7,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
-    ]
+    ],
+    temperature: 0.4
   });
 
-  return response.choices[0].message.content;
+  const analysisText = completion.choices[0].message.content;
+
+  // --- 4. RESPUESTA FINAL (FRONTEND COMPATIBLE) ---
+  return {
+    verdict,
+    score,
+    analysis: analysisText
+  };
 }
 

@@ -1,42 +1,18 @@
-export const breedsContext = {
+export const breeds = {
   "Border Collie": {
-    description: "Raza altamente inteligente y activa, seleccionada históricamente para trabajo de pastoreo.",
-    knownIssues: [
-      "Anomalía del ojo del Collie (CEA)",
-      "Epilepsia idiopática",
-      "Displasia de cadera en menor proporción"
-    ]
+    risks: ["ocular", "neurologico"],
+    description: "Raza de alta inteligencia con predisposición a alteraciones oculares hereditarias."
   },
   "Golden Retriever": {
-    description: "Raza familiar muy popular, con alta predisposición genética a determinadas patologías.",
-    knownIssues: [
-      "Displasia de cadera y codo",
-      "Problemas cardíacos",
-      "Alta incidencia de cáncer"
-    ]
+    risks: ["displasia", "ocular"],
+    description: "Raza popular con riesgo elevado de displasia de cadera y enfermedades oculares."
   },
   "Labrador Retriever": {
-    description: "Raza robusta y versátil, pero con problemas hereditarios bien documentados.",
-    knownIssues: [
-      "Displasia",
-      "Obesidad genética",
-      "Problemas oculares"
-    ]
+    risks: ["displasia"],
+    description: "Raza robusta pero propensa a displasia y obesidad."
   },
   "Pastor Alemán": {
-    description: "Raza de trabajo con estructura genética compleja.",
-    knownIssues: [
-      "Displasia severa",
-      "Degeneración mielopática",
-      "Problemas digestivos"
-    ]
-  },
-  "Bulldog Inglés": {
-    description: "Raza braquicéfala con importantes retos de bienestar.",
-    knownIssues: [
-      "Problemas respiratorios",
-      "Dificultad reproductiva",
-      "Dermatitis crónica"
-    ]
+    risks: ["displasia", "neurologico"],
+    description: "Alta incidencia de displasia y patologías neurológicas degenerativas."
   }
 };

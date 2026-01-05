@@ -1,71 +1,40 @@
-import OpenAI from "openai";
 import { breeds } from "./breeds.js";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-export async function runAnalysis({ raza, objetivo, consanguinidad, antecedentes }) {
-  // --- 1. SCORE BASE (determinista, seguro) ---
+export async function analyze({ raza, objetivo, consanguinidad, antecedentes }) {
   let score = 0;
 
-  if (consanguinidad === "Alta") score += 5;
-  if (consanguinidad === "Media") score += 3;
+  // Consanguinidad
+  if (consanguinidad === "Alta") score += 4;
+  if (consanguinidad === "Media") score += 2;
+  if (consanguinidad === "Baja") score += 0;
 
+  // Antecedentes
   score += antecedentes.length * 2;
 
-  let verdict = "RIESGO BAJO";
-  if (score >= 7) verdict = "RIESGO ALTO";
-  else if (score >= 4) verdict = "RIESGO MODERADO";
-
-  // --- 2. CONTEXTO TÉCNICO PARA LA IA ---
+  // Raza (si existe en breeds)
   const breedInfo = breeds[raza];
+  if (breedInfo && breedInfo.risk) {
+    score += breedInfo.risk;
+  }
 
-  const systemPrompt = `
-Eres un genetista canino senior y asesor de criaderos profesionales.
-Tu tarea es evaluar cruces de forma crítica, clara y honesta.
-No exageres, pero tampoco suavices riesgos.
-Escribe análisis profesionales, estructurados y accionables.
-`;
+  let verdict = "RIESGO BAJO";
+  if (score >= 4) verdict = "RIESGO MODERADO";
+  if (score >= 7) verdict = "RIESGO ALTO";
 
-  const userPrompt = `
-Raza: ${raza}
-Objetivo de cría: ${objetivo}
-Nivel de consanguinidad: ${consanguinidad}
-Antecedentes marcados: ${antecedentes.join(", ") || "Ninguno"}
+  let recommendation = "Cruce aceptable bajo seguimiento veterinario estándar.";
+  if (score >= 4) {
+    recommendation = "Se recomienda realizar pruebas genéticas preventivas antes del cruce.";
+  }
+  if (score >= 7) {
+    recommendation = "Cruce desaconsejado sin estudios genéticos exhaustivos y asesoramiento profesional.";
+  }
 
-Riesgos conocidos de la raza:
-${breedInfo ? breedInfo.description : "No especificados"}
-
-Puntuación de riesgo calculada: ${score} (${verdict})
-
-Redacta un informe profesional con esta estructura:
-
-1. Resumen ejecutivo
-2. Evaluación genética específica de la raza
-3. Impacto de la consanguinidad en este cruce
-4. Alertas críticas
-5. Recomendaciones técnicas concretas
-6. Conclusión profesional
-`;
-
-  // --- 3. LLAMADA A OPENAI ---
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ],
-    temperature: 0.4
-  });
-
-  const analysisText = completion.choices[0].message.content;
-
-  // --- 4. RESPUESTA FINAL (FRONTEND COMPATIBLE) ---
   return {
     verdict,
     score,
-    analysis: analysisText
+    explanation: `El cruce propuesto para la raza ${raza} presenta un nivel de consanguinidad ${consanguinidad.toLowerCase()} y está orientado a un objetivo de cría enfocado en ${objetivo.toLowerCase()}. Se han identificado antecedentes genéticos relevantes (${antecedentes.join(", ") || "ninguno"}), lo que influye directamente en el riesgo potencial de la descendencia.`,
+    recommendation
   };
 }
+
 

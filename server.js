@@ -9,47 +9,17 @@ app.use(express.json());
 
 app.post("/analyze", async (req, res) => {
   try {
-    const { raza, objetivo, consanguinidad, antecedentes } = req.body;
-
-    const result = await analyze({
-      breed: raza,
-      objective: objetivo,
-      consanguinity: consanguinidad,
-      antecedentes: antecedentes || []
-    });
-
-    // Protección absoluta: SIEMPRE devolver JSON válido
-    return res.json({
-      verdict: result.verdict || "NO DISPONIBLE",
-      score: result.score ?? "-",
-      analysisText: result.analysisText || "Análisis no disponible.",
-      recommendation:
-        result.recommendation ||
-        "No se pudo generar una recomendación automática."
-    });
+    const result = await analyze(req.body);
+    res.json(result);
   } catch (err) {
-    console.error("Error en /analyze:", err);
-
-    // JAMÁS 500
-    return res.json({
-      verdict: "NO DISPONIBLE",
-      score: "-",
-      analysisText:
-        "No se pudo generar el análisis clínico en este momento.",
-      recommendation:
-        "Inténtalo de nuevo o consulta con un profesional."
-    });
+    console.error("Error en análisis:", err.message);
+    res.status(500).json({ error: "Error en análisis clínico" });
   }
-});
-
-// Health check
-app.get("/", (_, res) => {
-  res.send("BreedingAI backend operativo");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en puerto ${PORT}`);
+  console.log("BreedingAI backend activo en puerto", PORT);
 });
 
 

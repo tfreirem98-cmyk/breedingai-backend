@@ -1,11 +1,5 @@
 import OpenAI from "openai";
 
-/**
- * Motor de análisis clínico avanzado con IA
- * La IA evalúa, razona y decide.
- * Las reglas humanas solo aportan contexto.
- */
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -17,7 +11,7 @@ export async function analyze({
   antecedentes
 }) {
   if (!breed || !objective || !consanguinity) {
-    throw new Error("Datos incompletos para el análisis");
+    return fallbackAnalysis();
   }
 
   const antecedentesText =
@@ -26,64 +20,69 @@ export async function analyze({
       : "No se han reportado antecedentes clínicos conocidos";
 
   const prompt = `
-Actúa como un veterinario especialista en genética canina, reproducción responsable
-y evaluación clínica de cruces.
+Eres un veterinario especialista en genética canina y reproducción responsable.
 
-Vas a realizar un INFORME CLÍNICO PROFESIONAL DE VIABILIDAD DE CRUCE.
-El informe debe ser técnico, claro, estructurado y orientado a criadores profesionales.
+Genera un INFORME CLÍNICO PROFESIONAL DE VIABILIDAD DE CRUCE.
 
-Datos del cruce:
+Datos:
 - Raza: ${breed}
 - Objetivo de cría: ${objective}
-- Nivel de consanguinidad estimado: ${consanguinity}
-- Antecedentes clínicos conocidos: ${antecedentesText}
+- Consanguinidad: ${consanguinity}
+- Antecedentes: ${antecedentesText}
 
-Tareas:
-1. Evalúa el riesgo clínico global del cruce.
-2. Considera riesgos genéticos conocidos y potenciales.
-3. Analiza el impacto del nivel de consanguinidad.
-4. Valora la coherencia del objetivo de cría con la raza.
-5. Detecta riesgos evidentes y no evidentes.
-6. Emite una recomendación profesional clara.
-
-Devuelve el resultado en formato JSON con EXACTAMENTE esta estructura:
+Devuelve SOLO JSON con esta estructura exacta:
 
 {
   "verdict": "RIESGO BAJO | RIESGO MODERADO | RIESGO ALTO",
-  "score": número entero del 1 al 10,
-  "analysisText": "Informe clínico detallado en español, con secciones, tono profesional y enfoque veterinario",
-  "recommendation": "Recomendación final clara y profesional"
+  "score": número del 1 al 10,
+  "analysisText": "Informe clínico detallado, estructurado y técnico",
+  "recommendation": "Recomendación profesional final"
 }
-
-No incluyas explicaciones fuera del JSON.
 `;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.3,
-    messages: [
-      { role: "system", content: "Eres un experto clínico en genética canina." },
-      { role: "user", content: prompt }
-    ]
-  });
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: "Eres un experto clínico veterinario." },
+        { role: "user", content: prompt }
+      ]
+    });
 
-  let content = response.choices[0].message.content;
+    let content = response.choices[0].message.content.trim();
 
-  // Limpieza defensiva por si OpenAI añade texto extra
-  content = content.trim();
-  const jsonStart = content.indexOf("{");
-  const jsonEnd = content.lastIndexOf("}");
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error("Respuesta de IA no válida");
+    // Limpieza defensiva
+    const start = content.indexOf("{");
+    const end = content.lastIndexOf("}");
+    if (start === -1 || end === -1) {
+      return fallbackAnalysis();
+    }
+
+    const parsed = JSON.parse(content.slice(start, end + 1));
+
+    return {
+      verdict: parsed.verdict || "RIESGO MODERADO",
+      score: parsed.score || 5,
+      analysisText: parsed.analysisText || "Análisis clínico no disponible.",
+      recommendation:
+        parsed.recommendation ||
+        "Se recomienda evaluación veterinaria adicional."
+    };
+  } catch (err) {
+    console.error("Error IA:", err.message);
+    return fallbackAnalysis();
   }
+}
 
-  const parsed = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
-
+function fallbackAnalysis() {
   return {
-    verdict: parsed.verdict,
-    score: parsed.score,
-    analysisText: parsed.analysisText,
-    recommendation: parsed.recommendation
+    verdict: "RIESGO MODERADO",
+    score: 5,
+    analysisText:
+      "No se ha podido completar el análisis clínico avanzado. El cruce presenta factores que requieren evaluación veterinaria especializada antes de proceder.",
+    recommendation:
+      "Se recomienda realizar pruebas genéticas preventivas y asesoramiento profesional."
   };
 }
 

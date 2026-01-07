@@ -50,8 +50,7 @@ FORMATO DE RESPUESTA (JSON ESTRICTO):
 
   try {
     return JSON.parse(raw);
-  } catch (e) {
-    throw new Error("La IA devolvió una respuesta no válida.");
+  } catch {
+    throw new Error("Respuesta de IA no válida");
   }
 }
-
